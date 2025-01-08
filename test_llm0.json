@@ -1,0 +1,29 @@
+{
+    "functionName":"test_llm",
+    "functionParams":[
+        {
+            "name":"inputExe",
+            "type":"string",
+            "value":"D:\\Atreat\\AtreatLites\\50\\PhaseProgressMonitoring\\bin\\PhaseProgressMonitoring.exe"
+        },
+        {
+            "name":"inputFolder",
+            "type":"string",
+            "value":"D:\\test_phaseCases\\PPM_test\\XHP094-3321714"
+        },
+        {
+            "name":"inputJson",
+            "type":"string",
+            "value":"taskInfo.json"
+        }
+    ],
+    "functionReturn":{
+        "type":"string",
+        "value":"0"
+    },
+    "functionStructure":{
+        "step1":"递归查找指定文件夹inputFolder下的指定文件inputJson",
+        "step2":"运行可执行程序inputExe, 将查找到的文件inputJson作为参数传入,运行格式为'inputExe --inputJson inputJson'",
+        "step3":"将运行可执行程序inputExe的输出结果作为返回值"
+    }
+}

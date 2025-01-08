@@ -1,0 +1,10 @@
+
+
+ 参考所附的json文件格式生成新的json数据:
+ "递归查找指定文件夹inputFolder下的所有文件和子目录,如果一个子目录a满足以下条件，则在该子目录a下生成一个taskInfo.json文件：
+1. 当前子目录a包含至少一个.ods文件,或者a的所有子目录下总计包含至少一个.ods文件；2. 当前子目录a和a的子目录下总计包含多于一个.ddm文件,
+将生成taskInfo.json的路径作为返回值"
+
+
+ 
+ 按所附json文件的要求生成一个python函数generate_taskInfo2
