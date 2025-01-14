@@ -1,6 +1,8 @@
 import os
 import taichi as ti
 import numpy as np
+
+bias_diagonal = 1.2#np.sqrt(2)#
 ti.init(arch=ti.cpu)
 
 block1 = ti.root.pointer(ti.ij, (8,8))
@@ -44,16 +46,27 @@ def init_data():
             if (i == 599 and j <= 399) or (j == 399 and i <= 599):
                 x1[i, j] = -1.0
 @ti.func
-def update_neighbours_core(x2_nb, x1_nb, x2_center):
+def update_neighbours_core(x2_nb, x1_nb, x2_center, bias = 1.0):
     if(x1_nb < 0):
-        value_new = x2_center - 1.0
+        value_new = x2_center - bias
         if x2_nb < value_new:
             x2_nb = value_new
     else:
-        value_new = x2_center + 1.0
+        value_new = x2_center + bias
         if x2_nb > value_new:
             x2_nb = value_new
     return x2_nb
+
+@ti.func
+def update_neighbours_core2(i_nb, j_nb, i_center, j_center, bias = 1.0):
+    if(x1[i_nb, j_nb] < 0):
+        value_new = x2[i_center, j_center] - bias
+        if x2[i_nb, j_nb] < value_new:
+            x2[i_nb, j_nb] = value_new
+    else:
+        value_new = x2[i_center, j_center] + bias
+        if x2[i_nb, j_nb] > value_new:
+            x2[i_nb, j_nb] = value_new
 
 @ti.func
 def update_neighbours(i,j):
@@ -64,7 +77,8 @@ def update_neighbours(i,j):
             else:
                 x2[i-1, j] = x2[i, j] - 1.0
         elif abs(x1[i-1, j]) > 0.5:
-            x2[i-1, j] = update_neighbours_core(x2[i-1, j], x1[i-1, j], x2[i, j])
+            #x2[i-1, j] = update_neighbours_core(x2[i-1, j], x1[i-1, j], x2[i, j])
+            update_neighbours_core2(i-1, j, i, j)
     if i < N_x-1:
         if not ti.is_active(pixel, [i+1, j]): 
             if x1[i, j] > 0:
@@ -72,7 +86,8 @@ def update_neighbours(i,j):
             else:
                 x2[i+1, j] = x2[i, j] - 1.0
         elif abs(x1[i+1, j]) > 0.5:
-            x2[i+1, j] = update_neighbours_core(x2[i+1, j], x1[i+1, j], x2[i, j])
+            #x2[i+1, j] = update_neighbours_core(x2[i+1, j], x1[i+1, j], x2[i, j])
+            update_neighbours_core2(i+1, j, i, j)
     if j > 0:
         if not ti.is_active(pixel, [i, j-1]): 
             if x1[i, j] > 0:
@@ -80,7 +95,8 @@ def update_neighbours(i,j):
             else:
                 x2[i, j-1] = x2[i, j] - 1.0
         elif abs(x1[i, j-1]) > 0.5:
-            x2[i, j-1] = update_neighbours_core(x2[i, j-1], x1[i, j-1], x2[i, j])
+            #x2[i, j-1] = update_neighbours_core(x2[i, j-1], x1[i, j-1], x2[i, j])
+            update_neighbours_core2(i, j-1, i, j)
     if j < N_y-1:
         if not ti.is_active(pixel, [i, j+1]): 
             if x1[i, j] > 0:
@@ -88,19 +104,56 @@ def update_neighbours(i,j):
             else:
                 x2[i, j+1] = x2[i, j] - 1.0
         elif abs(x1[i, j+1]) > 0.5:
-            x2[i, j+1] = update_neighbours_core(x2[i, j+1], x1[i, j+1], x2[i, j])
+            #x2[i, j+1] = update_neighbours_core(x2[i, j+1], x1[i, j+1], x2[i, j])
+            update_neighbours_core2(i, j+1, i, j)
+    if i>0 and j>0:
+        if not ti.is_active(pixel, [i-1, j-1]): 
+            if x1[i, j] > 0:
+                x2[i-1, j-1] = x2[i, j] + bias_diagonal
+            else:
+                x2[i-1, j-1] = x2[i, j] - bias_diagonal
+        elif abs(x1[i-1, j-1]) > 0.5:
+            #x2[i-1, j-1] = update_neighbours_core(x2[i-1, j-1], x1[i-1, j-1], x2[i, j], bias_diagonal)
+            update_neighbours_core2(i-1, j-1, i, j, bias_diagonal)
+    if i>0 and j<N_y-1:
+        if not ti.is_active(pixel, [i-1, j+1]): 
+            if x1[i, j] > 0:
+                x2[i-1, j+1] = x2[i, j] + bias_diagonal
+            else:
+                x2[i-1, j+1] = x2[i, j] - bias_diagonal
+        elif abs(x1[i-1, j+1]) > 0.5:
+            #x2[i-1, j+1] = update_neighbours_core(x2[i-1, j+1], x1[i-1, j+1], x2[i, j], bias_diagonal)
+            update_neighbours_core2(i-1, j+1, i, j, bias_diagonal)
+    if i<N_x-1 and j>0:
+        if not ti.is_active(pixel, [i+1, j-1]): 
+            if x1[i, j] > 0:
+                x2[i+1, j-1] = x2[i, j] + bias_diagonal
+            else:
+                x2[i+1, j-1] = x2[i, j] - bias_diagonal
+        elif abs(x1[i+1, j-1]) > 0.5:
+            #@x2[i+1, j-1] = update_neighbours_core(x2[i+1, j-1], x1[i+1, j-1], x2[i, j], bias_diagonal)
+            update_neighbours_core2(i+1, j-1, i, j, bias_diagonal)
+    if i<N_x-1 and j<N_y-1:
+        if not ti.is_active(pixel, [i+1, j+1]): 
+            if x1[i, j] > 0:
+                x2[i+1, j+1] = x2[i, j] + bias_diagonal
+            else:
+                x2[i+1, j+1] = x2[i, j] - bias_diagonal
+        elif abs(x1[i+1, j+1]) > 0.5:
+            #x2[i+1, j+1] = update_neighbours_core(x2[i+1, j+1], x1[i+1, j+1], x2[i, j], bias_diagonal)
+            update_neighbours_core2(i+1, j+1, i, j, bias_diagonal)
 @ti.kernel
 def process_core(rate: float):
     for i, j in pixel:
         if abs(x1[i, j]) <= 0.5:
-            x2[i, j] = x1[i, j] + rate
+            x2[i, j] = x1[i, j] - rate
             update_neighbours(i,j)
     for i, j in pixel:
         if (abs(x2[i, j]) <= 0.5) and (abs(x1[i, j]) > 0.5):
             update_neighbours(i,j)
     for i, j in pixel:
         x1[i, j] = x2[i, j]
-        if abs(x1[i, j]) > 1.5:
+        if abs(x1[i, j]) > 2.0:
             ti.deactivate(pixel, [i,j])
 
 
@@ -117,4 +170,4 @@ while gui.running:
     gui.set_image(x1.to_numpy())
     gui.show()
     step += 1
-    print(step)
+    #print(step)
