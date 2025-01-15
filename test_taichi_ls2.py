@@ -3,7 +3,8 @@ import taichi as ti
 import numpy as np
 
 bias_diagonal = np.sqrt(2)#1.6#
-r_level = 0.75
+r_level0 = 0.95
+r_level1 = r_level0+1.0
 ti.init(arch=ti.cpu)
 
 block1 = ti.root.pointer(ti.ij, (8,8))
@@ -63,17 +64,25 @@ def update_neighbours_core3(i_nb, j_nb, i_center, j_center, bias = 1.0):
     if not ti.is_active(pixel, [i_nb, j_nb]): 
         if x1[i_center, j_center] > 0:
             x2[i_nb, j_nb] = x2[i_center, j_center] + bias
+            x1[i_nb, j_nb] = r_level1+0.1#激活时需要赋一个有意义的值
         else:
             x2[i_nb, j_nb] = x2[i_center, j_center] - bias
-    elif abs(x1[i_nb, j_nb]) > r_level:
+            x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
+    elif abs(x1[i_nb, j_nb]) > r_level0:# and abs(x2[i_nb, j_nb]) > r_level0:
         if(x1[i_nb, j_nb] < 0):
             value_new = x2[i_center, j_center] - bias
-            x2[i_nb, j_nb] = max(x2[i_nb, j_nb], value_new)
-            #x2[i_nb, j_nb] = -ti.sqrt(x2[i_nb, j_nb]**2+value_new**2) * 0.5
+            if(abs(x2[i_nb, j_nb]) > r_level1):
+                x2[i_nb, j_nb] = value_new
+            else:
+                x2[i_nb, j_nb] = max(x2[i_nb, j_nb], value_new)
         else:
             value_new = x2[i_center, j_center] + bias
-            x2[i_nb, j_nb] = min(x2[i_nb, j_nb], value_new)
-            #x2[i_nb, j_nb] = ti.sqrt(x2[i_nb, j_nb]**2+value_new**2) * 0.5
+            if(abs(x2[i_nb, j_nb]) > r_level1):
+                x2[i_nb, j_nb] = value_new
+            else:
+                bias_last = x2[i_nb, j_nb] - x2[i_center, j_center]
+                value_new = x2[i_center, j_center] + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
+                x2[i_nb, j_nb] = min(x2[i_nb, j_nb], value_new)
 
 @ti.func
 def update_neighbours(i,j):
@@ -104,15 +113,17 @@ def update_neighbours(i,j):
 @ti.kernel
 def process_core(rate: float):
     for i, j in pixel:
-        if abs(x1[i, j]) <= r_level:
+        if abs(x1[i, j]) <= r_level0:
             x2[i, j] = x1[i, j] - rate
             update_neighbours(i,j)
     for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level) and (abs(x1[i, j]) > r_level):
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):
             update_neighbours(i,j)
     for i, j in pixel:
         x1[i, j] = x2[i, j]
-        if abs(x1[i, j]) > 5.0:
+        x2[i, j] = -(r_level1+0.1)
+        if abs(x1[i, j]) > r_level1:
+            x1[i, j] = -(r_level1+0.1)
             ti.deactivate(pixel, [i,j])
 
 
