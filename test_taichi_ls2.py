@@ -2,10 +2,10 @@ import os
 import taichi as ti
 import numpy as np
 
-bias_diagonal = np.sqrt(2)#1.6#
-r_level0 = 0.95
+bias_diagonal = 1.0#np.sqrt(2)#
+r_level0 = 0.75
 r_level1 = r_level0+1.0
-ti.init(arch=ti.cpu)
+ti.init(arch=ti.cpu)#, cpu_max_num_threads=1)
 
 block1 = ti.root.pointer(ti.ij, (8,8))
 block2 = block1.pointer(ti.ij, (8,8))
@@ -114,8 +114,19 @@ def update_neighbours(i,j):
 def process_core(rate: float):
     for i, j in pixel:
         if abs(x1[i, j]) <= r_level0:
-            x2[i, j] = x1[i, j] - rate
-            update_neighbours(i,j)
+            x2[i, j] = x1[i, j] - rate    
+    for i, j in pixel:
+        if abs(x1[i, j]) <= r_level0 and i > 0:
+            update_neighbours_core3(i-1, j, i, j)  
+    for i, j in pixel:
+        if abs(x1[i, j]) <= r_level0 and i < N_x-1:
+            update_neighbours_core3(i+1, j, i, j)  
+    for i, j in pixel:
+        if abs(x1[i, j]) <= r_level0 and j > 0:
+            update_neighbours_core3(i, j-1, i, j)
+    for i, j in pixel:
+        if abs(x1[i, j]) <= r_level0 and j < N_y-1:
+            update_neighbours_core3(i, j+1, i, j)
     for i, j in pixel:
         if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):
             update_neighbours(i,j)
