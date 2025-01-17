@@ -39,14 +39,30 @@ def print_active():
 def init_data():
     for i in range(pixel.shape[0]):
         for j in range(pixel.shape[1]):
-            #dist_bias = ti.sqrt(i*i+j*j)-800
-            #if(abs(dist_bias) < 1.5):
-            if (i == 600 and j <= 400) or (j == 400 and i <= 600):
-                x1[i, j] = 0.0
-            if (i == 601 and j <= 401) or (j == 401 and i <= 601):
-                x1[i, j] = 1.0
-            if (i == 599 and j <= 399) or (j == 399 and i <= 599):
-                x1[i, j] = -1.0
+            target_radius = 50
+            dist_bias = ti.sqrt((i-500)**2+(j-500)**2)
+            if(abs(dist_bias-target_radius) <= r_level1):
+                if(abs(dist_bias-target_radius) <= r_level0):
+                    x1[i, j] = 0.0
+                elif(dist_bias-target_radius > r_level0):
+                    x1[i, j] = 1.0
+                else:
+                    x1[i, j] = -1.0
+
+            # if (i == 600 and j <= 400) or (j == 400 and i <= 600):
+            #     x1[i, j] = 0.0
+            # if (i == 601 and j <= 401) or (j == 401 and i <= 601):
+            #     x1[i, j] = 1.0
+            # if (i == 599 and j <= 399) or (j == 399 and i <= 599):
+            #     x1[i, j] = -1.0
+
+            # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
+            #     x1[i, j] = 0.0
+            # if (i == 401 and j >= 601) or (j == 601 and i >= 401):
+            #     x1[i, j] = -1.0
+            # if (i == 399 and j >= 599) or (j == 599 and i >= 399):
+            #     x1[i, j] = 1.0
+
 @ti.func
 def update_neighbours_core(x2_nb, x1_nb, x2_center, bias = 1.0):
     if(x1_nb < 0):
@@ -68,21 +84,17 @@ def update_neighbours_core3(i_nb, j_nb, i_center, j_center, bias = 1.0):
         else:
             x2[i_nb, j_nb] = x2[i_center, j_center] - bias
             x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
-    elif abs(x1[i_nb, j_nb]) > r_level0:# and abs(x2[i_nb, j_nb]) > r_level0:
-        if(x1[i_nb, j_nb] < 0):
-            value_new = x2[i_center, j_center] - bias
-            if(abs(x2[i_nb, j_nb]) > r_level1):
-                x2[i_nb, j_nb] = value_new
+    elif abs(x1[i_nb, j_nb]) > r_level0:
+        if(abs(x2[i_nb, j_nb]) > r_level1):
+            if(x1[i_nb, j_nb] < 0):
+                x2[i_nb, j_nb] = x2[i_center, j_center] - bias
             else:
-                x2[i_nb, j_nb] = max(x2[i_nb, j_nb], value_new)
+                x2[i_nb, j_nb] = x2[i_center, j_center] + bias
         else:
-            value_new = x2[i_center, j_center] + bias
-            if(abs(x2[i_nb, j_nb]) > r_level1):
+            bias_last = x2[i_nb, j_nb] - x2[i_center, j_center]#有方向
+            value_new = x2[i_center, j_center] + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
+            if abs(value_new) < abs(x2[i_nb, j_nb]):
                 x2[i_nb, j_nb] = value_new
-            else:
-                bias_last = x2[i_nb, j_nb] - x2[i_center, j_center]
-                value_new = x2[i_center, j_center] + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
-                x2[i_nb, j_nb] = min(x2[i_nb, j_nb], value_new)
 
 @ti.func
 def update_neighbours(i,j):
@@ -128,8 +140,22 @@ def process_core(rate: float):
         if abs(x1[i, j]) <= r_level0 and j < N_y-1:
             update_neighbours_core3(i, j+1, i, j)
     for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):
-            update_neighbours(i,j)
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+            if j > 0:
+                update_neighbours_core3(i, j-1, i, j)
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+            if j < N_y-1:
+                update_neighbours_core3(i, j+1, i, j)
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):            
+            if i > 0:
+                update_neighbours_core3(i-1, j, i, j)
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+            if i < N_x-1:
+                update_neighbours_core3(i+1, j, i, j)
+
     for i, j in pixel:
         x1[i, j] = x2[i, j]
         x2[i, j] = -(r_level1+0.1)
