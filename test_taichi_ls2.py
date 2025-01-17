@@ -123,30 +123,40 @@ def update_neighbours(i,j):
     #     update_neighbours_core3(i+1, j+1, i, j, bias_diagonal)
 
 @ti.kernel
-def process_core(rate: float):
+def process_core(rate: float, step: int):
     for i, j in pixel:
         if abs(x1[i, j]) <= r_level0:
-            x2[i, j] = x1[i, j] - rate    
+            x2[i, j] = x1[i, j] - rate     
+
     for i, j in pixel:
-        if abs(x1[i, j]) <= r_level0 and i > 0:
-            update_neighbours_core3(i-1, j, i, j)  
-    for i, j in pixel:
-        if abs(x1[i, j]) <= r_level0 and i < N_x-1:
-            update_neighbours_core3(i+1, j, i, j)  
-    for i, j in pixel:
-        if abs(x1[i, j]) <= r_level0 and j > 0:
-            update_neighbours_core3(i, j-1, i, j)
-    for i, j in pixel:
-        if abs(x1[i, j]) <= r_level0 and j < N_y-1:
-            update_neighbours_core3(i, j+1, i, j)
-    for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
-            if j > 0:
+        if step % 2 == 0:
+            if abs(x1[i, j]) <= r_level0 and i > 0:
+                update_neighbours_core3(i-1, j, i, j) 
+        else:
+            if abs(x1[i, j]) <= r_level0 and j > 0:
                 update_neighbours_core3(i, j-1, i, j)
     for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
-            if j < N_y-1:
+        if step % 2 == 0:
+            if abs(x1[i, j]) <= r_level0 and i < N_x-1:
+                update_neighbours_core3(i+1, j, i, j) 
+        else:
+            if abs(x1[i, j]) <= r_level0 and j < N_y-1:
                 update_neighbours_core3(i, j+1, i, j)
+    for i, j in pixel:
+        if step % 2 == 0:
+            if abs(x1[i, j]) <= r_level0 and j > 0:
+                update_neighbours_core3(i, j-1, i, j)
+        else:
+            if abs(x1[i, j]) <= r_level0 and i > 0:
+                update_neighbours_core3(i-1, j, i, j)
+    for i, j in pixel:
+        if step % 2 == 0:
+            if abs(x1[i, j]) <= r_level0 and j < N_y-1:
+                update_neighbours_core3(i, j+1, i, j)
+        else:
+            if abs(x1[i, j]) <= r_level0 and i < N_x-1:
+                update_neighbours_core3(i+1, j, i, j)
+
     for i, j in pixel:
         if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):            
             if i > 0:
@@ -155,6 +165,14 @@ def process_core(rate: float):
         if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
             if i < N_x-1:
                 update_neighbours_core3(i+1, j, i, j)
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+            if j > 0:
+                update_neighbours_core3(i, j-1, i, j)
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+            if j < N_y-1:
+                update_neighbours_core3(i, j+1, i, j)
 
     for i, j in pixel:
         x1[i, j] = x2[i, j]
@@ -173,7 +191,7 @@ gui = ti.GUI("Sparse Field", res=(N_x, N_y))
 
 step = 0
 while gui.running:
-    process_core(0.3)
+    process_core(0.3, step)
     gui.set_image(x1.to_numpy())
     gui.show()
     step += 1
