@@ -71,15 +71,15 @@ def init_data():
                     x1[i, j] = -1.0
                 x2[i, j] = -(r_level1+0.1)
 
-            if (i == 600 and j <= 400) or (j == 400 and i <= 600):
-                x1[i, j] = 0.0
-                x2[i, j] = -(r_level1+0.1)
-            if (i == 601 and j <= 401) or (j == 401 and i <= 601):
-                x1[i, j] = 1.0
-                x2[i, j] = -(r_level1+0.1)
-            if (i == 599 and j <= 399) or (j == 399 and i <= 599):
-                x1[i, j] = -1.0
-                x2[i, j] = -(r_level1+0.1)
+            # if (i == 600 and j <= 400) or (j == 400 and i <= 600):
+            #     x1[i, j] = 0.0
+            #     x2[i, j] = -(r_level1+0.1)
+            # if (i == 601 and j <= 401) or (j == 401 and i <= 601):
+            #     x1[i, j] = 1.0
+            #     x2[i, j] = -(r_level1+0.1)
+            # if (i == 599 and j <= 399) or (j == 399 and i <= 599):
+            #     x1[i, j] = -1.0
+            #     x2[i, j] = -(r_level1+0.1)
 
             # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
             #     x1[i, j] = 0.0
@@ -132,14 +132,14 @@ def update_neighbours(i,j):
 
 @ti.func
 def update_neighbours_core_L0(i_nb, j_nb, i_center, j_center, bias = 1.0):    
-    # if not ti.is_active(pixel, [i_nb, j_nb]): #外层L1可能不连续
-    #     if x1[i_center, j_center] > 0:
-    #         x2[i_nb, j_nb] = x2[i_center, j_center] + bias
-    #         x1[i_nb, j_nb] = r_level1+0.1#激活时需要赋一个有意义的值
-    #     else:
-    #         x2[i_nb, j_nb] = x2[i_center, j_center] - bias
-    #         x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
-    if abs(x1[i_nb, j_nb]) > r_level0:
+    if not ti.is_active(pixel, [i_nb, j_nb]): #外层L1可能不连续
+        if x1[i_center, j_center] > 0:
+            x2[i_nb, j_nb] = x2[i_center, j_center] + bias
+            x1[i_nb, j_nb] = r_level1+0.1#激活时需要赋一个有意义的值
+        else:
+            x2[i_nb, j_nb] = x2[i_center, j_center] - bias
+            x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
+    elif abs(x1[i_nb, j_nb]) > r_level0:
         if(abs(x2[i_nb, j_nb]) > r_level1):
             if(x1[i_nb, j_nb] < 0):
                 x2[i_nb, j_nb] = x2[i_center, j_center] - bias
@@ -207,22 +207,22 @@ def process_core(rate: float, step: int):
             if abs(x1[i, j]) <= r_level0 and i < N_x-1:
                 update_neighbours_core_L0(i+1, j, i, j)
 
-    for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):            
-            if i > 0:
-                update_neighbours_core_L1(i-1, j, i, j)
-    for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
-            if i < N_x-1:
-                update_neighbours_core_L1(i+1, j, i, j)
-    for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
-            if j > 0:
-                update_neighbours_core_L1(i, j-1, i, j)
-    for i, j in pixel:
-        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
-            if j < N_y-1:
-                update_neighbours_core_L1(i, j+1, i, j)
+    # for i, j in pixel:
+    #     if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):            
+    #         if i > 0:
+    #             update_neighbours_core_L1(i-1, j, i, j)
+    # for i, j in pixel:
+    #     if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+    #         if i < N_x-1:
+    #             update_neighbours_core_L1(i+1, j, i, j)
+    # for i, j in pixel:
+    #     if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+    #         if j > 0:
+    #             update_neighbours_core_L1(i, j-1, i, j)
+    # for i, j in pixel:
+    #     if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):          
+    #         if j < N_y-1:
+    #             update_neighbours_core_L1(i, j+1, i, j)
 
     for i, j in pixel:
         x1[i, j] = x2[i, j]
