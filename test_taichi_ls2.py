@@ -1,4 +1,4 @@
-import os
+
 import time
 import taichi as ti
 import numpy as np
@@ -8,10 +8,14 @@ r_level0 = 0.75
 r_level1 = r_level0 + 1.0
 ti.init(arch=ti.cpu)#, cpu_max_num_threads=1)
 
-block1 = ti.root.pointer(ti.ij, (8,8))
-block2 = block1.pointer(ti.ij, (8,8))
-block3 = block2.pointer(ti.ij, (8,8))
-pixel = block3.bitmasked(ti.ij, (2,2))
+size_root_element = 8
+size_block1_element = 8
+size_block2_element = 8
+size_block3_element = 2
+block1 = ti.root.pointer(ti.ij, (size_root_element,size_root_element))
+block2 = block1.pointer(ti.ij, (size_block1_element,size_block1_element))
+block3 = block2.pointer(ti.ij, (size_block2_element,size_block2_element))
+pixel = block3.bitmasked(ti.ij, (size_block3_element,size_block3_element))
 #pixel = block2.dense(ti.ij, (2,2))
 
 N_x = pixel.shape[0]
@@ -116,16 +120,15 @@ def update_neighbours_L1(i_nb, j_nb, i_center, j_center, bias = 1.0):
             x2[i_nb, j_nb] = value_center_x2 - bias
             x1[i_nb, j_nb] = -r_level1-0.1
     elif abs(x2[i_nb, j_nb]) > r_level0:
+        update_neighbours_L0(i_nb, j_nb, value_center_x2)
         # value_new = value_center_x2 + bias
         # if x1[i_center, j_center] < 0:
         #     value_new = value_center_x2 - bias
         # if abs(value_new) < abs(x2[i_nb, j_nb]):
         #     x2[i_nb, j_nb] = value_new
-        update_neighbours_L0(i_nb, j_nb, value_center_x2)
 
 @ti.kernel
-def process_core(rate: float, step: int):    
-
+def process_core(rate: float, step: int):   
     for i, j in pixel:
         if abs(x1[i, j]) <= r_level0:
             x2[i, j] = x1[i, j] - rate            
@@ -190,9 +193,9 @@ def deactivate_unvalid_block():
     for m,n in ti.ndrange(block3.shape[0], block3.shape[1]):
         if ti.is_active(block3, [m, n]):
             status_block = False
-            for i_local, j_local in ti.ndrange(2, 2):  # pixel 层级的局部坐标
-                i_global = m * 2 + i_local  # 将局部坐标转换为全局坐标
-                j_global = n * 2 + j_local
+            for i_local, j_local in ti.ndrange(size_block3_element, size_block3_element):  # pixel 层级的局部坐标
+                i_global = m * size_block3_element + i_local  # 将局部坐标转换为全局坐标
+                j_global = n * size_block3_element + j_local
                 if ti.is_active(pixel, [i_global, j_global]):
                     status_block = True
             if not status_block:
@@ -201,9 +204,9 @@ def deactivate_unvalid_block():
     for m,n in ti.ndrange(block2.shape[0], block2.shape[1]):
         if ti.is_active(block2, [m, n]):
             status_block = False
-            for i_local, j_local in ti.ndrange(8,8):  # block3 层级的局部坐标
-                i_global = m * 8 + i_local  # 将局部坐标转换为全局坐标
-                j_global = n * 8 + j_local
+            for i_local, j_local in ti.ndrange(size_block2_element,size_block2_element):  # block3 层级的局部坐标
+                i_global = m * size_block2_element + i_local  # 将局部坐标转换为全局坐标
+                j_global = n * size_block2_element + j_local
                 if ti.is_active(block3, [i_global, j_global]):
                     status_block = True
                     break
@@ -213,9 +216,9 @@ def deactivate_unvalid_block():
     for m,n in ti.ndrange(block1.shape[0], block1.shape[1]):
         if ti.is_active(block1, [m, n]):
             status_block = False
-            for i_local, j_local in ti.ndrange(8,8):  # block2 层级的局部坐标
-                i_global = m * 8 + i_local  # 将局部坐标转换为全局坐标
-                j_global = n * 8 + j_local
+            for i_local, j_local in ti.ndrange(size_block1_element,size_block1_element):  # block2 层级的局部坐标
+                i_global = m * size_block1_element + i_local  # 将局部坐标转换为全局坐标
+                j_global = n * size_block1_element + j_local
                 if ti.is_active(block2, [i_global, j_global]):
                     status_block = True
                     break
@@ -238,6 +241,5 @@ while gui.running:#step < 1000:#
     if step<2e5:
         process_core(0.3, step)
     step += 1
-    #print(step)
 end_time = time.time()
 print("Time cost: ", end_time-start_time)
