@@ -71,15 +71,15 @@ def init_data():
                     x1[i, j] = -1.0
                 x2[i, j] = -(r_level1+0.1)
 
-            # if (i == 600 and j <= 400) or (j == 400 and i <= 600):
-            #     x1[i, j] = 0.0
-            #     x2[i, j] = -(r_level1+0.1)
-            # if (i == 601 and j <= 401) or (j == 401 and i <= 601):
-            #     x1[i, j] = 1.0
-            #     x2[i, j] = -(r_level1+0.1)
-            # if (i == 599 and j <= 399) or (j == 399 and i <= 599):
-            #     x1[i, j] = -1.0
-            #     x2[i, j] = -(r_level1+0.1)
+            if (i == 600 and j <= 400) or (j == 400 and i <= 600):
+                x1[i, j] = 0.0
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 601 and j <= 401) or (j == 401 and i <= 601):
+                x1[i, j] = 1.0
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 599 and j <= 399) or (j == 399 and i <= 599):
+                x1[i, j] = -1.0
+                x2[i, j] = -(r_level1+0.1)
 
             # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
             #     x1[i, j] = 0.0
@@ -132,14 +132,14 @@ def update_neighbours(i,j):
 
 @ti.func
 def update_neighbours_core_L0(i_nb, j_nb, i_center, j_center, bias = 1.0):    
-    if not ti.is_active(pixel, [i_nb, j_nb]): #外层L1可能不连续
-        if x1[i_center, j_center] > 0:
-            x2[i_nb, j_nb] = x2[i_center, j_center] + bias
-            x1[i_nb, j_nb] = r_level1+0.1#激活时需要赋一个有意义的值
-        else:
-            x2[i_nb, j_nb] = x2[i_center, j_center] - bias
-            x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
-    elif abs(x1[i_nb, j_nb]) > r_level0:
+    # if not ti.is_active(pixel, [i_nb, j_nb]): #外层L1可能不连续
+    #     if x1[i_center, j_center] > 0:
+    #         x2[i_nb, j_nb] = x2[i_center, j_center] + bias
+    #         x1[i_nb, j_nb] = r_level1+0.1#激活时需要赋一个有意义的值
+    #     else:
+    #         x2[i_nb, j_nb] = x2[i_center, j_center] - bias
+    #         x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
+    if abs(x1[i_nb, j_nb]) > r_level0:
         if(abs(x2[i_nb, j_nb]) > r_level1):
             if(x1[i_nb, j_nb] < 0):
                 x2[i_nb, j_nb] = x2[i_center, j_center] - bias
@@ -160,6 +160,12 @@ def update_neighbours_core_L1(i_nb, j_nb, i_center, j_center, bias = 1.0):
         else:
             x2[i_nb, j_nb] = x2[i_center, j_center] - bias
             x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
+    else:
+        value_new = x2[i_center, j_center] + bias
+        if x1[i_center, j_center] < 0:
+            value_new = x2[i_center, j_center] - bias
+        if abs(value_new) < abs(x2[i_nb, j_nb]):
+            x2[i_nb, j_nb] = value_new
     # elif abs(x1[i_nb, j_nb]) > r_level1:
     #         bias_last = x2[i_nb, j_nb] - x2[i_center, j_center]#有方向
     #         value_new = x2[i_center, j_center] + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
@@ -266,7 +272,7 @@ gui = ti.GUI("Sparse Field", res=(N_x, N_y))
 step = 0
 start_time = time.time()
 while gui.running:#step < 1000:#
-    if (step % 1 == 0):#True:#
+    if (step % 10 == 0):#True:#
         gui.set_image(x1.to_numpy())
         gui.show()
         deactivate_unvalid_block()
