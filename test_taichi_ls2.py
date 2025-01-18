@@ -71,15 +71,15 @@ def init_data():
                     x1[i, j] = -1.0
                 x2[i, j] = -(r_level1+0.1)
 
-            # if (i == 600 and j <= 400) or (j == 400 and i <= 600):
-            #     x1[i, j] = 0.0
-            #     x2[i, j] = -(r_level1+0.1)
-            # if (i == 601 and j <= 401) or (j == 401 and i <= 601):
-            #     x1[i, j] = 1.0
-            #     x2[i, j] = -(r_level1+0.1)
-            # if (i == 599 and j <= 399) or (j == 399 and i <= 599):
-            #     x1[i, j] = -1.0
-            #     x2[i, j] = -(r_level1+0.1)
+            if (i == 600 and j <= 400) or (j == 400 and i <= 600):
+                x1[i, j] = 0.0
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 601 and j <= 401) or (j == 401 and i <= 601):
+                x1[i, j] = 1.0
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 599 and j <= 399) or (j == 399 and i <= 599):
+                x1[i, j] = -1.0
+                x2[i, j] = -(r_level1+0.1)
 
             # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
             #     x1[i, j] = 0.0
@@ -92,90 +92,40 @@ def init_data():
             #     x2[i, j] = -(r_level1+0.1)
 
 @ti.func
-def update_neighbours_activate(i,j, bias = 1.0):
-    value_center = x1[i, j]
-    if i > 0:
-        if not ti.is_active(pixel, [i-1, j]): 
-            if value_center > 0:
-                x1[i-1, j] = value_center + bias
-            else:
-                x1[i-1, j] = value_center - bias
-            x2[i-1, j] = -r_level1-0.1
-    if i < N_x-1:
-        if not ti.is_active(pixel, [i+1, j]): 
-            if value_center > 0:
-                x1[i+1, j] = value_center + bias
-            else:
-                x1[i+1, j] = value_center - bias
-            x2[i+1, j] = -r_level1-0.1
-    if j > 0:
-        if not ti.is_active(pixel, [i, j-1]): 
-            if value_center > 0:
-                x1[i, j-1] = value_center + bias
-            else:
-                x1[i, j-1] = value_center - bias
-            x2[i, j-1] = -r_level1-0.1
-    if j < N_y-1:
-        if not ti.is_active(pixel, [i, j+1]): 
-            if value_center > 0:
-                x1[i, j+1] = value_center + bias
-            else:
-                x1[i, j+1] = value_center - bias
-            x2[i, j+1] = -r_level1-0.1
-    # if i>0 and j>0:
-    #     update_neighbours_core3(i-1, j-1, i, j, bias_diagonal)
-    # if i>0 and j<N_y-1:
-    #     update_neighbours_core3(i-1, j+1, i, j, bias_diagonal)
-    # if i<N_x-1 and j>0:
-    #     update_neighbours_core3(i+1, j-1, i, j, bias_diagonal)
-    # if i<N_x-1 and j<N_y-1:
-    #     update_neighbours_core3(i+1, j+1, i, j, bias_diagonal)
-
-
-@ti.func
-def update_neighbours_L0(i_nb, j_nb, i_center, j_center, bias = 1.0):    
+def update_neighbours_L0(i_nb, j_nb, value_center_x2, bias = 1.0):  
     if abs(x1[i_nb, j_nb]) > r_level0:
         if(abs(x2[i_nb, j_nb]) > r_level1):
             if(x1[i_nb, j_nb] < 0):
-                x2[i_nb, j_nb] = x2[i_center, j_center] - bias
+                x2[i_nb, j_nb] = value_center_x2 - bias
             else:
-                x2[i_nb, j_nb] = x2[i_center, j_center] + bias
+                x2[i_nb, j_nb] = value_center_x2 + bias
         else:
-            bias_last = x2[i_nb, j_nb] - x2[i_center, j_center]#有方向
-            value_new = x2[i_center, j_center] + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
+            bias_last = x2[i_nb, j_nb] - value_center_x2#有方向
+            value_new = value_center_x2 + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
             if abs(value_new) < abs(x2[i_nb, j_nb]):
                 x2[i_nb, j_nb] = value_new
 
 @ti.func
 def update_neighbours_L1(i_nb, j_nb, i_center, j_center, bias = 1.0):
+    value_center_x2 = x2[i_center, j_center]
     if not ti.is_active(pixel, [i_nb, j_nb]): 
         if x1[i_center, j_center] > 0:
-            x2[i_nb, j_nb] = x2[i_center, j_center] + bias
-            x1[i_nb, j_nb] = r_level1+0.1#激活时需要赋一个有意义的值
+            x2[i_nb, j_nb] = value_center_x2 + bias
+            x1[i_nb, j_nb] = r_level1+0.1
         else:
-            x2[i_nb, j_nb] = x2[i_center, j_center] - bias
-            x1[i_nb, j_nb] = -r_level1-0.1#激活时需要赋一个有意义的值
-    else:
-        value_new = x2[i_center, j_center] + bias
-        if x1[i_center, j_center] < 0:
-            value_new = x2[i_center, j_center] - bias
-        if abs(value_new) < abs(x2[i_nb, j_nb]):
-            x2[i_nb, j_nb] = value_new
-    # elif abs(x1[i_nb, j_nb]) > r_level1:
-    #         bias_last = x2[i_nb, j_nb] - x2[i_center, j_center]#有方向
-    #         value_new = x2[i_center, j_center] + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
-    #         if abs(value_new) < abs(x2[i_nb, j_nb]):
-    #             x2[i_nb, j_nb] = value_new
+            x2[i_nb, j_nb] = value_center_x2 - bias
+            x1[i_nb, j_nb] = -r_level1-0.1
+    elif abs(x2[i_nb, j_nb]) > r_level0:
+        # value_new = value_center_x2 + bias
+        # if x1[i_center, j_center] < 0:
+        #     value_new = value_center_x2 - bias
+        # if abs(value_new) < abs(x2[i_nb, j_nb]):
+        #     x2[i_nb, j_nb] = value_new
+        update_neighbours_L0(i_nb, j_nb, value_center_x2)
 
 @ti.kernel
 def process_core(rate: float, step: int):    
-    for i, j in ti.ndrange(N_x, N_y):
-        ti.loop_config(serialize=True)  
-        if ti.is_active(pixel, [i, j]):
-            if abs(x1[i, j]) <= r_level0:   
-                update_neighbours_activate(i, j) 
 
-    ti.sync()
     for i, j in pixel:
         if abs(x1[i, j]) <= r_level0:
             x2[i, j] = x1[i, j] - rate            
@@ -184,48 +134,48 @@ def process_core(rate: float, step: int):
     for i, j in pixel:
         if step % 2 == 0:
             if abs(x1[i, j]) <= r_level0 and i > 0:
-                update_neighbours_L0(i-1, j, i, j) 
+                update_neighbours_L0(i-1, j, x2[i, j]) 
         else:
             if abs(x1[i, j]) <= r_level0 and j > 0:
-                update_neighbours_L0(i, j-1, i, j)
+                update_neighbours_L0(i, j-1, x2[i, j])
     ti.sync()
     for i, j in pixel:
         if step % 2 == 0:
             if abs(x1[i, j]) <= r_level0 and i < N_x-1:
-                update_neighbours_L0(i+1, j, i, j) 
+                update_neighbours_L0(i+1, j, x2[i, j]) 
         else:
             if abs(x1[i, j]) <= r_level0 and j < N_y-1:
-                update_neighbours_L0(i, j+1, i, j)
+                update_neighbours_L0(i, j+1, x2[i, j])
     ti.sync()
     for i, j in pixel:
         if step % 2 == 0:
             if abs(x1[i, j]) <= r_level0 and j > 0:
-                update_neighbours_L0(i, j-1, i, j)
+                update_neighbours_L0(i, j-1, x2[i, j])
         else:
             if abs(x1[i, j]) <= r_level0 and i > 0:
-                update_neighbours_L0(i-1, j, i, j)
+                update_neighbours_L0(i-1, j, x2[i, j])
     ti.sync()
     for i, j in pixel:
         if step % 2 == 0:
             if abs(x1[i, j]) <= r_level0 and j < N_y-1:
-                update_neighbours_L0(i, j+1, i, j)
+                update_neighbours_L0(i, j+1, x2[i, j])
         else:
             if abs(x1[i, j]) <= r_level0 and i < N_x-1:
-                update_neighbours_L0(i+1, j, i, j)
+                update_neighbours_L0(i+1, j, x2[i, j])
   
-    # ti.sync()
-    # for i, j in ti.ndrange(N_x, N_y):
-    #     ti.loop_config(serialize=True)  
-    #     if ti.is_active(pixel, [i, j]):
-    #         if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):            
-    #             if i > 0:
-    #                 update_neighbours_L1(i-1, j, i, j)         
-    #             if i < N_x-1:
-    #                 update_neighbours_L1(i+1, j, i, j)        
-    #             if j > 0:
-    #                 update_neighbours_L1(i, j-1, i, j)      
-    #             if j < N_y-1:
-    #                 update_neighbours_L1(i, j+1, i, j)
+    ti.sync()
+    for i, j in ti.ndrange(N_x, N_y):
+        ti.loop_config(serialize=True)  
+        if ti.is_active(pixel, [i, j]):
+            if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):  
+                if i > 0:
+                    update_neighbours_L1(i-1, j, i, j)         
+                if i < N_x-1:
+                    update_neighbours_L1(i+1, j, i, j)        
+                if j > 0:
+                    update_neighbours_L1(i, j-1, i, j)      
+                if j < N_y-1:
+                    update_neighbours_L1(i, j+1, i, j)
 
     ti.sync()
     for i, j in pixel:
