@@ -67,60 +67,63 @@ def init_data2():
 
 @ti.kernel
 def init_data():
+    #下边两行在gpu模式下会导致结果出错？？？
+    # for i in range(pixel.shape[0]):
+    #     for j in range(pixel.shape[1]):
     for i, j in ti.ndrange(N_x, N_y):
-        target_radius = 50
-        target_center = 500
-        dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
-        if(abs(dist_bias-target_radius) <= r_level1):
-            if(abs(dist_bias-target_radius) <= r_level0):
+            target_radius = 50
+            target_center = 500
+            dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
+            if(abs(dist_bias-target_radius) <= r_level1):
+                if(abs(dist_bias-target_radius) <= r_level0):
+                    x1[i, j] = 0.0
+                elif(dist_bias-target_radius > r_level0):
+                    x1[i, j] = 1.0
+                else:
+                    x1[i, j] = -1.0
+                x2[i, j] = -(r_level1+0.1)
+
+            target_center = 300  
+            dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
+            if(abs(dist_bias-target_radius) <= r_level1):
+                if(abs(dist_bias-target_radius) <= r_level0):
+                    x1[i, j] = 0.0
+                elif(dist_bias-target_radius > r_level0):
+                    x1[i, j] = 1.0
+                else:
+                    x1[i, j] = -1.0
+                x2[i, j] = -(r_level1+0.1)
+
+            target_center = 800
+            dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
+            if(abs(dist_bias-target_radius) <= r_level1):
+                if(abs(dist_bias-target_radius) <= r_level0):
+                    x1[i, j] = 0.0
+                elif(dist_bias-target_radius > r_level0):
+                    x1[i, j] = 1.0
+                else:
+                    x1[i, j] = -1.0
+                x2[i, j] = -(r_level1+0.1)
+
+            if (i == 600 and j <= 400) or (j == 400 and i <= 600):
                 x1[i, j] = 0.0
-            elif(dist_bias-target_radius > r_level0):
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 601 and j <= 401) or (j == 401 and i <= 601):
                 x1[i, j] = 1.0
-            else:
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 599 and j <= 399) or (j == 399 and i <= 599):
                 x1[i, j] = -1.0
-            x2[i, j] = -(r_level1+0.1)
+                x2[i, j] = -(r_level1+0.1)
 
-        target_center = 300  
-        dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
-        if(abs(dist_bias-target_radius) <= r_level1):
-            if(abs(dist_bias-target_radius) <= r_level0):
-                x1[i, j] = 0.0
-            elif(dist_bias-target_radius > r_level0):
-                x1[i, j] = 1.0
-            else:
-                x1[i, j] = -1.0
-            x2[i, j] = -(r_level1+0.1)
-
-        target_center = 800
-        dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
-        if(abs(dist_bias-target_radius) <= r_level1):
-            if(abs(dist_bias-target_radius) <= r_level0):
-                x1[i, j] = 0.0
-            elif(dist_bias-target_radius > r_level0):
-                x1[i, j] = 1.0
-            else:
-                x1[i, j] = -1.0
-            x2[i, j] = -(r_level1+0.1)
-
-        if (i == 600 and j <= 400) or (j == 400 and i <= 600):
-            x1[i, j] = 0.0
-            x2[i, j] = -(r_level1+0.1)
-        if (i == 601 and j <= 401) or (j == 401 and i <= 601):
-            x1[i, j] = 1.0
-            x2[i, j] = -(r_level1+0.1)
-        if (i == 599 and j <= 399) or (j == 399 and i <= 599):
-            x1[i, j] = -1.0
-            x2[i, j] = -(r_level1+0.1)
-
-        # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
-        #     x1[i, j] = 0.0
-        #     x2[i, j] = -(r_level1+0.1)
-        # if (i == 401 and j >= 601) or (j == 601 and i >= 401):
-        #     x1[i, j] = -1.0
-        #     x2[i, j] = -(r_level1+0.1)
-        # if (i == 399 and j >= 599) or (j == 599 and i >= 399):
-        #     x1[i, j] = 1.0
-        #     x2[i, j] = -(r_level1+0.1)
+            # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
+            #     x1[i, j] = 0.0
+            #     x2[i, j] = -(r_level1+0.1)
+            # if (i == 401 and j >= 601) or (j == 601 and i >= 401):
+            #     x1[i, j] = -1.0
+            #     x2[i, j] = -(r_level1+0.1)
+            # if (i == 399 and j >= 599) or (j == 599 and i >= 399):
+            #     x1[i, j] = 1.0
+            #     x2[i, j] = -(r_level1+0.1)
 
 @ti.func
 def update_neighbours_L0(i_nb, j_nb, value_center_x2, bias = 1.0):  
@@ -194,6 +197,7 @@ def process_core(rate: float, step: int):
                 update_neighbours_L0(i+1, j, x2[i, j])
   
     ti.sync()
+    #下述三行在gpu模式下可能出错（因为有新的active？）
     # for i, j in ti.ndrange(N_x, N_y):
     #    ti.loop_config(serialize=True)  
     #    if ti.is_active(pixel, [i, j]):
