@@ -273,4 +273,5 @@ while gui.running:#step < 1000:#
     process_core(0.3, step)
     step += 1
 end_time = time.time()
+ti.reset()
 print("Time cost: ", end_time-start_time)
