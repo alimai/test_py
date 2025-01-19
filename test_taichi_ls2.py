@@ -5,7 +5,7 @@ import numpy as np
 
 bias_diagonal = np.sqrt(2)#1.0#
 r_level0 = 0.75
-r_level1 = r_level0 + 1.0
+r_level1 = r_level0 + 1.1#+1.1>1.0防止数值误差
 ti.init(arch=ti.gpu)#, cpu_max_num_threads=1)
 
 size_root_element = 8
