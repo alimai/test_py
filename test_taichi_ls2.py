@@ -6,7 +6,7 @@ import numpy as np
 bias_diagonal = np.sqrt(2)#1.0#
 r_level0 = 0.75
 r_level1 = r_level0 + 1.0
-ti.init(arch=ti.cpu)#, cpu_max_num_threads=1)
+ti.init(arch=ti.gpu)#, cpu_max_num_threads=1)
 
 size_root_element = 8
 size_block1_element = 8
@@ -20,6 +20,7 @@ pixel = block3.bitmasked(ti.ij, (size_block3_element,size_block3_element))
 
 N_x = pixel.shape[0]
 N_y = pixel.shape[1]
+print(N_x,N_y)
 
 x1 = ti.field(ti.f32)
 x2 = ti.field(ti.f32)
@@ -41,59 +42,85 @@ def print_active():
 
 
 @ti.kernel
-def init_data():
-    for i in range(pixel.shape[0]):
-        for j in range(pixel.shape[1]):
-            target_radius = 50
-            dist_bias = ti.sqrt((i-500)**2+(j-500)**2)
-            if(abs(dist_bias-target_radius) <= r_level1):
-                if(abs(dist_bias-target_radius) <= r_level0):
-                    x1[i, j] = 0.0
-                elif(dist_bias-target_radius > r_level0):
-                    x1[i, j] = 1.0
-                else:
-                    x1[i, j] = -1.0
-                x2[i, j] = -(r_level1+0.1)
-
-            dist_bias = ti.sqrt((i-300)**2+(j-300)**2)
-            if(abs(dist_bias-target_radius) <= r_level1):
-                if(abs(dist_bias-target_radius) <= r_level0):
-                    x1[i, j] = 0.0
-                elif(dist_bias-target_radius > r_level0):
-                    x1[i, j] = 1.0
-                else:
-                    x1[i, j] = -1.0
-                x2[i, j] = -(r_level1+0.1)
-                    
-            dist_bias = ti.sqrt((i-800)**2+(j-800)**2)
-            if(abs(dist_bias-target_radius) <= r_level1):
-                if(abs(dist_bias-target_radius) <= r_level0):
-                    x1[i, j] = 0.0
-                elif(dist_bias-target_radius > r_level0):
-                    x1[i, j] = 1.0
-                else:
-                    x1[i, j] = -1.0
-                x2[i, j] = -(r_level1+0.1)
-
-            if (i == 600 and j <= 400) or (j == 400 and i <= 600):
+def init_data2():
+    for i, j in ti.ndrange(N_x, N_y):
+        if i > 100 and i < 900 and j > 100 and j< 900:
+            if (i == 400 and j <= 400) or  (j == 400 and i <= 400):
                 x1[i, j] = 0.0
                 x2[i, j] = -(r_level1+0.1)
-            if (i == 601 and j <= 401) or (j == 401 and i <= 601):
+            if (i == 401 and j <= 401) or (j == 401 and i <= 401):
                 x1[i, j] = 1.0
                 x2[i, j] = -(r_level1+0.1)
-            if (i == 599 and j <= 399) or (j == 399 and i <= 599):
+            if (i == 399 and j <= 399) or (j == 399 and i <= 399):
                 x1[i, j] = -1.0
                 x2[i, j] = -(r_level1+0.1)
 
-            # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
-            #     x1[i, j] = 0.0
-            #     x2[i, j] = -(r_level1+0.1)
-            # if (i == 401 and j >= 601) or (j == 601 and i >= 401):
-            #     x1[i, j] = -1.0
-            #     x2[i, j] = -(r_level1+0.1)
-            # if (i == 399 and j >= 599) or (j == 599 and i >= 399):
-            #     x1[i, j] = 1.0
-            #     x2[i, j] = -(r_level1+0.1)
+            if (i == 800 and j <= 800) or (j == 800 and i <= 800):
+                x1[i, j] = 0.0
+                x2[i, j] = -(r_level1+0.1)
+            if  (i == 799 and j <= 799) or (j == 799 and i <= 799):
+                x1[i, j] = 1.0
+                x2[i, j] = -(r_level1+0.1)
+            if (i == 801 and j <= 801) or (j == 801 and i <= 801):
+                x1[i, j] = -1.0
+                x2[i, j] = -(r_level1+0.1)
+
+@ti.kernel
+def init_data():
+    for i, j in ti.ndrange(N_x, N_y):
+        target_radius = 50
+        target_center = 500
+        dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
+        if(abs(dist_bias-target_radius) <= r_level1):
+            if(abs(dist_bias-target_radius) <= r_level0):
+                x1[i, j] = 0.0
+            elif(dist_bias-target_radius > r_level0):
+                x1[i, j] = 1.0
+            else:
+                x1[i, j] = -1.0
+            x2[i, j] = -(r_level1+0.1)
+
+        target_center = 300  
+        dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
+        if(abs(dist_bias-target_radius) <= r_level1):
+            if(abs(dist_bias-target_radius) <= r_level0):
+                x1[i, j] = 0.0
+            elif(dist_bias-target_radius > r_level0):
+                x1[i, j] = 1.0
+            else:
+                x1[i, j] = -1.0
+            x2[i, j] = -(r_level1+0.1)
+
+        target_center = 800
+        dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
+        if(abs(dist_bias-target_radius) <= r_level1):
+            if(abs(dist_bias-target_radius) <= r_level0):
+                x1[i, j] = 0.0
+            elif(dist_bias-target_radius > r_level0):
+                x1[i, j] = 1.0
+            else:
+                x1[i, j] = -1.0
+            x2[i, j] = -(r_level1+0.1)
+
+        if (i == 600 and j <= 400) or (j == 400 and i <= 600):
+            x1[i, j] = 0.0
+            x2[i, j] = -(r_level1+0.1)
+        if (i == 601 and j <= 401) or (j == 401 and i <= 601):
+            x1[i, j] = 1.0
+            x2[i, j] = -(r_level1+0.1)
+        if (i == 599 and j <= 399) or (j == 399 and i <= 599):
+            x1[i, j] = -1.0
+            x2[i, j] = -(r_level1+0.1)
+
+        # if (i == 400 and j >= 600) or (j == 600 and i >= 400):
+        #     x1[i, j] = 0.0
+        #     x2[i, j] = -(r_level1+0.1)
+        # if (i == 401 and j >= 601) or (j == 601 and i >= 401):
+        #     x1[i, j] = -1.0
+        #     x2[i, j] = -(r_level1+0.1)
+        # if (i == 399 and j >= 599) or (j == 599 and i >= 399):
+        #     x1[i, j] = 1.0
+        #     x2[i, j] = -(r_level1+0.1)
 
 @ti.func
 def update_neighbours_L0(i_nb, j_nb, value_center_x2, bias = 1.0):  
@@ -167,9 +194,10 @@ def process_core(rate: float, step: int):
                 update_neighbours_L0(i+1, j, x2[i, j])
   
     ti.sync()
-    for i, j in ti.ndrange(N_x, N_y):
-        ti.loop_config(serialize=True)  
-        if ti.is_active(pixel, [i, j]):
+    # for i, j in ti.ndrange(N_x, N_y):
+    #    ti.loop_config(serialize=True)  
+    #    if ti.is_active(pixel, [i, j]):
+    for i, j in pixel:
             if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):  
                 if i > 0:
                     update_neighbours_L1(i-1, j, i, j)         
@@ -185,7 +213,6 @@ def process_core(rate: float, step: int):
         x1[i, j] = x2[i, j]
         x2[i, j] = -(r_level1+0.1)
         if abs(x1[i, j]) > r_level1:
-            x1[i, j] = -(r_level1+0.1)
             ti.deactivate(pixel, [i,j])
 
 @ti.kernel
@@ -238,8 +265,8 @@ while gui.running:#step < 1000:#
         gui.set_image(x1.to_numpy())
         gui.show()
         deactivate_unvalid_block()
-    if step<2e5:
-        process_core(0.3, step)
+        #input("input:")
+    process_core(0.3, step)
     step += 1
 end_time = time.time()
 print("Time cost: ", end_time-start_time)
