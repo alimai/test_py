@@ -73,7 +73,7 @@ def init_data():
     # for i in range(pixel.shape[0]):
     #     for j in range(pixel.shape[1]):
     for i, j in ti.ndrange(N_x, N_y):
-            target_radius = 50
+            target_radius = 5
             target_center = 500
             dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
             if(abs(dist_bias-target_radius) <= r_level1):
@@ -235,28 +235,52 @@ def check_neighbours_L1()->(bool):
             if i > 0:
                 if x1[i-1, j] < -r_level0 and x1[i-1, j] > -r_level1:
                     check_result = False
-                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1, j]))
+                    if(i > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1,j]))
                     if(i < N_x-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j,x1[i+1,j]))
+                    if(j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
+                    if(j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    print("")
             if j > 0:
                 if x1[i, j-1] < -r_level0 and x1[i, j-1] > -r_level1:
                     check_result = False       
-                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1])) 
+                    if(i > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1,j]))
+                    if(i < N_x-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j,x1[i+1,j]))
+                    if(j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
                     if(j < N_y-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    print("")
         if x1[i, j] < -r_level0:
             if i > 0:
                 if x1[i-1, j] > r_level0:
                     check_result = False
-                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1,j]))
+                    if(i > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1,j]))
                     if(i < N_x-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j,x1[i+1,j]))
+                    if(j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
+                    if(j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    print("")
             if j > 0:
                 if x1[i, j-1] > r_level0:
                     check_result = False
-                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
+                    if(i > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1,j]))
+                    if(i < N_x-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j,x1[i+1,j]))
+                    if(j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
                     if(j < N_y-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    print("")
     return check_result
 
 @ti.kernel
@@ -319,6 +343,7 @@ while gui.running:#step < 500:#
         gui.show()
         deactivate_unvalid_block()
         if step % 500 == 0:
+            print("step = ", step)
             value_step *= -1
         #input("input:")
 
