@@ -73,7 +73,7 @@ def init_data():
     # for i in range(pixel.shape[0]):
     #     for j in range(pixel.shape[1]):
     for i, j in ti.ndrange(N_x, N_y):
-            target_radius = 5
+            target_radius = 50
             target_center = 500
             dist_bias = ti.sqrt((i-target_center)**2+(j-target_center)**2)
             if(abs(dist_bias-target_radius) <= r_level1):
@@ -141,8 +141,6 @@ def update_neighbours_L0(i_nb, j_nb, value_center_x2, value_gate = -1.0, bias = 
             if abs(value_new) < abs(x2[i_nb, j_nb]):
                 if abs(value_new) > value_gate: #may cause new L0 without value_gate
                     x2[i_nb, j_nb] = value_new
-                else:
-                    x2[i_nb, j_nb] = bias_last / abs(bias_last) * (value_gate+0.01)
 
 @ti.func
 def update_neighbours_L1(i_nb, j_nb, i_center, j_center, bias = 1.0):
@@ -205,18 +203,23 @@ def process_core(rate: float, step: int):
                 update_neighbours_L0(i+1, j, x2[i, j])
   
     ti.sync()
-    #下述三行在gpu模式下可能出错（因为有新的active？）
-    # for i, j in ti.ndrange(N_x, N_y):
-    #    ti.loop_config(serialize=True)  
-    #    if ti.is_active(pixel, [i, j]):
     for i, j in pixel:
         if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):  
             if i > 0:
-                update_neighbours_L1(i-1, j, i, j)         
+                update_neighbours_L1(i-1, j, i, j)   
+    ti.sync()  
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):       
             if i < N_x-1:
-                update_neighbours_L1(i+1, j, i, j)        
+                update_neighbours_L1(i+1, j, i, j)    
+    ti.sync()
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):       
             if j > 0:
-                update_neighbours_L1(i, j-1, i, j)      
+                update_neighbours_L1(i, j-1, i, j)     
+    ti.sync()
+    for i, j in pixel:
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):    
             if j < N_y-1:
                 update_neighbours_L1(i, j+1, i, j)
 
@@ -243,6 +246,22 @@ def check_neighbours_L1()->(bool):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
                     if(j < N_y-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    if(i > 0) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j-1,x1[i-1,j-1]))
+                    if(i < N_x-1) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j+1,x1[i+1,j+1]))
+                    if(i > 0) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j+1,x1[i-1,j+1]))
+                    if(i < N_x-1) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j-1,x1[i+1,j-1]))
+                    if(i > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-2,j,x1[i-2,j]))
+                    if(i < N_x-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+2,j,x1[i+2,j]))
+                    if(j > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-2,x1[i,j-2]))
+                    if(j < N_y-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+2,x1[i,j+2]))
                     print("")
             if j > 0:
                 if x1[i, j-1] < -r_level0 and x1[i, j-1] > -r_level1:
@@ -255,6 +274,22 @@ def check_neighbours_L1()->(bool):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
                     if(j < N_y-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    if(i > 0) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j-1,x1[i-1,j-1]))
+                    if(i < N_x-1) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j+1,x1[i+1,j+1]))
+                    if(i > 0) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j+1,x1[i-1,j+1]))
+                    if(i < N_x-1) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j-1,x1[i+1,j-1]))
+                    if(i > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-2,j,x1[i-2,j]))
+                    if(i < N_x-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+2,j,x1[i+2,j]))
+                    if(j > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-2,x1[i,j-2]))
+                    if(j < N_y-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+2,x1[i,j+2]))
                     print("")
         if x1[i, j] < -r_level0:
             if i > 0:
@@ -268,6 +303,22 @@ def check_neighbours_L1()->(bool):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
                     if(j < N_y-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    if(i > 0) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j-1,x1[i-1,j-1]))
+                    if(i < N_x-1) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j+1,x1[i+1,j+1]))
+                    if(i > 0) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j+1,x1[i-1,j+1]))
+                    if(i < N_x-1) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j-1,x1[i+1,j-1]))
+                    if(i > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-2,j,x1[i-2,j]))
+                    if(i < N_x-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+2,j,x1[i+2,j]))
+                    if(j > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-2,x1[i,j-2]))
+                    if(j < N_y-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+2,x1[i,j+2]))
                     print("")
             if j > 0:
                 if x1[i, j-1] > r_level0:
@@ -280,6 +331,22 @@ def check_neighbours_L1()->(bool):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
                     if(j < N_y-1):
                         print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+                    if(i > 0) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j-1,x1[i-1,j-1]))
+                    if(i < N_x-1) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j+1,x1[i+1,j+1]))
+                    if(i > 0) and (j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j+1,x1[i-1,j+1]))
+                    if(i < N_x-1) and (j > 0):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j-1,x1[i+1,j-1]))
+                    if(i > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-2,j,x1[i-2,j]))
+                    if(i < N_x-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+2,j,x1[i+2,j]))
+                    if(j > 1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-2,x1[i,j-2]))
+                    if(j < N_y-2):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+2,x1[i,j+2]))
                     print("")
     return check_result
 
@@ -332,16 +399,18 @@ step = 0
 value_step = 0.3
 start_time = time.time()
 while gui.running:#step < 500:#
+    step += 1
     #print("step = ", step)
     process_core(value_step, step)
+    ti.sync()
     if not check_neighbours_L1():
         print("Error: step = ", step)
         exit(0)
-    step += 1
     if (step % 20 == 0):#True:#
         gui.set_image(x1.to_numpy())
         gui.show()
         deactivate_unvalid_block()
+        ti.sync()
         if step % 500 == 0:
             print("step = ", step)
             value_step *= -1
