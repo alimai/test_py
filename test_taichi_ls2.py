@@ -24,6 +24,8 @@ print(N_x,N_y)
 
 x1 = ti.field(ti.f32)
 x2 = ti.field(ti.f32)
+#x1[None] = -r_level1 - 0.1
+#x2[None] = -r_level1 - 0.1
 pixel.place(x1, x2)
 
 @ti.kernel
@@ -126,7 +128,7 @@ def init_data():
             #     x2[i, j] = -(r_level1+0.1)
 
 @ti.func
-def update_neighbours_L0(i_nb, j_nb, value_center_x2, bias = 1.0):  
+def update_neighbours_L0(i_nb, j_nb, value_center_x2, value_gate = -1.0, bias = 1.0):  
     if abs(x1[i_nb, j_nb]) > r_level0:
         if(abs(x2[i_nb, j_nb]) > r_level1):
             if(x1[i_nb, j_nb] < 0):
@@ -137,7 +139,10 @@ def update_neighbours_L0(i_nb, j_nb, value_center_x2, bias = 1.0):
             bias_last = x2[i_nb, j_nb] - value_center_x2#有方向
             value_new = value_center_x2 + bias*bias_last/ti.sqrt(bias**2+bias_last**2)
             if abs(value_new) < abs(x2[i_nb, j_nb]):
-                x2[i_nb, j_nb] = value_new
+                if abs(value_new) > value_gate: #may cause new L0 without value_gate
+                    x2[i_nb, j_nb] = value_new
+                else:
+                    x2[i_nb, j_nb] = bias_last / abs(bias_last) * (value_gate+0.01)
 
 @ti.func
 def update_neighbours_L1(i_nb, j_nb, i_center, j_center, bias = 1.0):
@@ -150,7 +155,7 @@ def update_neighbours_L1(i_nb, j_nb, i_center, j_center, bias = 1.0):
             x2[i_nb, j_nb] = value_center_x2 - bias
             x1[i_nb, j_nb] = -r_level1-0.1
     elif abs(x2[i_nb, j_nb]) > r_level0:
-        update_neighbours_L0(i_nb, j_nb, value_center_x2)
+        update_neighbours_L0(i_nb, j_nb, value_center_x2, r_level0)
         # value_new = value_center_x2 + bias
         # if x1[i_center, j_center] < 0:
         #     value_new = value_center_x2 - bias
@@ -171,6 +176,7 @@ def process_core(rate: float, step: int):
         else:
             if abs(x1[i, j]) <= r_level0 and j > 0:
                 update_neighbours_L0(i, j-1, x2[i, j])
+                
     ti.sync()
     for i, j in pixel:
         if step % 2 == 0:
@@ -179,6 +185,7 @@ def process_core(rate: float, step: int):
         else:
             if abs(x1[i, j]) <= r_level0 and j < N_y-1:
                 update_neighbours_L0(i, j+1, x2[i, j])
+                
     ti.sync()
     for i, j in pixel:
         if step % 2 == 0:
@@ -187,6 +194,7 @@ def process_core(rate: float, step: int):
         else:
             if abs(x1[i, j]) <= r_level0 and i > 0:
                 update_neighbours_L0(i-1, j, x2[i, j])
+                
     ti.sync()
     for i, j in pixel:
         if step % 2 == 0:
@@ -202,15 +210,15 @@ def process_core(rate: float, step: int):
     #    ti.loop_config(serialize=True)  
     #    if ti.is_active(pixel, [i, j]):
     for i, j in pixel:
-            if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):  
-                if i > 0:
-                    update_neighbours_L1(i-1, j, i, j)         
-                if i < N_x-1:
-                    update_neighbours_L1(i+1, j, i, j)        
-                if j > 0:
-                    update_neighbours_L1(i, j-1, i, j)      
-                if j < N_y-1:
-                    update_neighbours_L1(i, j+1, i, j)
+        if (abs(x2[i, j]) <= r_level0) and (abs(x1[i, j]) > r_level0):  
+            if i > 0:
+                update_neighbours_L1(i-1, j, i, j)         
+            if i < N_x-1:
+                update_neighbours_L1(i+1, j, i, j)        
+            if j > 0:
+                update_neighbours_L1(i, j-1, i, j)      
+            if j < N_y-1:
+                update_neighbours_L1(i, j+1, i, j)
 
     ti.sync()
     for i, j in pixel:
@@ -218,6 +226,38 @@ def process_core(rate: float, step: int):
         x2[i, j] = -(r_level1+0.1)
         if abs(x1[i, j]) > r_level1:
             ti.deactivate(pixel, [i,j])
+            
+@ti.kernel
+def check_neighbours_L1()->(bool):
+    check_result = True
+    for i, j in pixel:
+        if x1[i, j] > r_level0:
+            if i > 0:
+                if x1[i-1, j] < -r_level0 and x1[i-1, j] > -r_level1:
+                    check_result = False
+                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1, j]))
+                    if(i < N_x-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j,x1[i+1,j]))
+            if j > 0:
+                if x1[i, j-1] < -r_level0 and x1[i, j-1] > -r_level1:
+                    check_result = False       
+                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1])) 
+                    if(j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+        if x1[i, j] < -r_level0:
+            if i > 0:
+                if x1[i-1, j] > r_level0:
+                    check_result = False
+                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i-1,j,x1[i-1,j]))
+                    if(i < N_x-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i+1,j,x1[i+1,j]))
+            if j > 0:
+                if x1[i, j-1] > r_level0:
+                    check_result = False
+                    print("Error: x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j-1,x1[i,j-1]))
+                    if(j < N_y-1):
+                        print("     x1[{},{}] = {}, x1[{},{}] = {}".format(i,j,x1[i,j],i,j+1,x1[i,j+1]))
+    return check_result
 
 @ti.kernel
 def deactivate_unvalid_block():   
@@ -261,17 +301,27 @@ init_data()
 #print_active()
 
 gui = ti.GUI("Sparse Field", res=(N_x, N_y))
+gui.set_image(x1.to_numpy())
+gui.show()
 
 step = 0
+value_step = 0.3
 start_time = time.time()
-while gui.running:#step < 1000:#
+while gui.running:#step < 500:#
+    #print("step = ", step)
+    process_core(value_step, step)
+    if not check_neighbours_L1():
+        print("Error: step = ", step)
+        exit(0)
+    step += 1
     if (step % 20 == 0):#True:#
         gui.set_image(x1.to_numpy())
         gui.show()
         deactivate_unvalid_block()
+        if step % 500 == 0:
+            value_step *= -1
         #input("input:")
-    process_core(0.3, step)
-    step += 1
+
 end_time = time.time()
 ti.reset()
 print("Time cost: ", end_time-start_time)
