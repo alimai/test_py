@@ -8,11 +8,10 @@ cloth_size_x = 1.2  # 布料大小
 cloth_size_y = cloth_size_x * n_y / n_x  # 布料大小
 quad_size = cloth_size_x / n_x  # 每个网格的大小
 dt = 3e-4  # 时间步长
-substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
 
 gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
-spring_Y = 3e4  # 弹簧系数
-dashpot_damping = 1e4  # 阻尼系数
+spring_Y = 3e3  # 弹簧系数
+dashpot_damping = 3e4  # 阻尼系数
 drag_damping = 1  # 空气阻力系数
 
 ball_radius = 0.3  # 球的半径
@@ -33,14 +32,14 @@ spring_offsets = []#弹簧偏移量
 
 @ti.kernel
 def initialize_mass_points():
-    random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * 0.1  # 随机偏移量
-
     for i, j in x:
+        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random() - 0.5]) * 0.05  # 随机偏移量
         x[i, j] = [
-            i * quad_size - cloth_size_x * 0.5 + random_offset[0],
-            j * quad_size - cloth_size_y * 0.5 + random_offset[1],
+            i * quad_size - cloth_size_x * 0.5,
+            j * quad_size - cloth_size_y * 0.5,
             0.6
         ]  # 初始化质点位置
+        x[i, j] += random_offset  # 添加随机偏移量
         v[i, j] = [0, 0, 0]  # 初始化质点速度
 
 @ti.kernel
@@ -77,36 +76,41 @@ def add_spring_offsets():
 
 @ti.kernel
 def substep():
-    for i in ti.grouped(x):
-        v[i] += gravity * dt  # 施加重力
+    for n in ti.grouped(x):
+        v[n] += gravity * dt  # 施加重力
 
-    for i in ti.grouped(x):
+    for n in ti.grouped(x):
         force = ti.Vector([0.0, 0.0, 0.0])
         for spring_offset in ti.static(spring_offsets):
-            j = i + spring_offset
-            if 0 <= j[0] < n_x and 0 <= j[1] < n_y:
-                x_ij = x[i] - x[j]
-                v_ij = v[i] - v[j]
+            m = n + spring_offset
+            if 0 <= m[0] < n_x and 0 <= m[1] < n_y:
+                x_ij = x[n] - x[m]
+                v_ij = v[n] - v[m]
                 d = x_ij.normalized()
                 current_dist = x_ij.norm()
-                original_dist = quad_size * float(i - j).norm()
+                original_dist = quad_size * float(n - m).norm()
                 # 弹簧力
                 force += -spring_Y * d * (current_dist / original_dist - 1)
                 # 阻尼力
                 force += -v_ij.dot(d) * d * dashpot_damping * quad_size
+        dv = force * dt
+        for i_c in ti.static(range(3)):
+            tmpValue = v[n][i_c]
+            if (dv[i_c]+tmpValue) * tmpValue < 0:
+                dv[i_c]=-tmpValue
+        v[n] += dv#force * dt  # 更新速度
 
-        v[i] += force * dt  # 更新速度
-
-    for i in ti.grouped(x):
-        v[i] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
-        offset_to_center = x[i] - ball_center[0]
+    for n in ti.grouped(x):
+        v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
+        offset_to_center = x[n] - ball_center[0]
+        offset_to_center[1] = 0#当作圆柱处理
         if offset_to_center.norm() <= ball_radius:# 碰撞检测
-            if abs(i[0]*quad_size-cloth_size_x * 0.5-ball_center[0][0])<=quad_size*0.5:
-                v[i] = [0, 0, 0]
+            if abs(n[0]*quad_size-cloth_size_x * 0.5-ball_center[0][0])<=quad_size*0.5:
+                v[n] = [0, 0, 0]
             else:
                 normal = offset_to_center.normalized()# 速度投影
-                v[i] -= min(v[i].dot(normal), 0) * normal
-        x[i] += dt * v[i]  # 更新位置
+                v[n] -= min(v[n].dot(normal), 0) * normal
+        x[n] += dt * v[n]  # 更新位置
 
 @ti.kernel
 def update_vertices():
@@ -120,11 +124,13 @@ if __name__ == '__main__':  # 主函数
     scene = window.get_scene()
     camera = ti.ui.make_camera()
 
-    current_t = 0.0
     initialize_mesh_indices()  # 初始化网格索引
     add_spring_offsets()
     initialize_mass_points()  # 初始化质点
 
+    current_t = 0.0
+    substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
+    first_half = ti.Vector.field(3, dtype=float, shape=n_x)
     while window.running:
         if current_t > 1.5:
             # 重置
@@ -145,12 +151,11 @@ if __name__ == '__main__':  # 主函数
         scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
         #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
         # 绘制一个较小的球以避免视觉穿透
-        # scene.particles(ball_center, radius=ball_radius * 0.95, color=(0.5, 0.42, 0.8))
+        #scene.particles(ball_center, radius=ball_radius * 0.95, color=(0.5, 0.42, 0.8))
 
-        first_half = ti.Vector.field(3, dtype=float, shape=n_x)
         for i in range(n_x):
             first_half[i] = vertices[i]
-        scene.particles(first_half, radius=0.01, color=(0.5, 0.42, 0.8))
+        scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
 
         canvas.scene(scene)
         window.show()
