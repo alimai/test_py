@@ -37,7 +37,7 @@ def initialize_mass_points():
         x[i, j] = [
             i * quad_size - cloth_size_x * 0.5,
             j * quad_size - cloth_size_y * 0.5,
-            0.6
+            0.5
         ]  # 初始化质点位置
         x[i, j] += random_offset  # 添加随机偏移量
         v[i, j] = [0, 0, 0]  # 初始化质点速度
@@ -99,6 +99,10 @@ def substep():
             if (dv[i_c]+tmpValue) * tmpValue < 0:
                 dv[i_c]=-tmpValue
         v[n] += dv#force * dt  # 更新速度
+        for i_c in ti.static(range(3)):
+            tmpValue = abs(v[n][i_c])
+            if tmpValue > 0.5:
+                v[n][i_c] /= tmpValue * 2
 
     for n in ti.grouped(x):
         v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
@@ -132,7 +136,7 @@ if __name__ == '__main__':  # 主函数
     substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
     first_half = ti.Vector.field(3, dtype=float, shape=n_x)
     while window.running:
-        if current_t > 1.5:
+        if current_t > 1.7:
             # 重置
             initialize_mass_points()
             current_t = 0
@@ -142,7 +146,7 @@ if __name__ == '__main__':  # 主函数
             current_t += dt
         update_vertices()  # 更新顶点
 
-        camera.position(0.0, 3.0, 0.0)  # 设置相机位置
+        camera.position(2.0, 2.0, 0.0)  # 设置相机位置
         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
         camera.up(0, 0, 1)
         scene.set_camera(camera)
