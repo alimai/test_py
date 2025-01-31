@@ -1,22 +1,23 @@
 import taichi as ti
 ti.init(arch=ti.cpu)  # 初始化Taichi，使用CPU架构
 
-n_x = 32  # 网格大小
-n_y = 2  # 网格大小
+ellipse_short = 0.3  # 椭圆的短轴
+ellipse_long = 0.5  # 椭圆的长轴
+ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 球的中心位置
+ball_center[0] = [0, 0, 0]  # 初始化球的中心位置
 
-cloth_size_x = 1.2  # 布料大小
-cloth_size_y = cloth_size_x * n_y / n_x  # 布料大小
-quad_size = cloth_size_x / n_x  # 每个网格的大小
+n_x = 32  # 质点数目
+cloth_size_x = ellipse_short * 2  # 布料大小
+quad_size = cloth_size_x / (n_x - 1)  # 每个网格的大小
+
+n_y = 2  # 质点数目
+cloth_size_y = quad_size * (n_y - 1)  # 布料大小
 dt = 3e-4  # 时间步长
 
 gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
 spring_Y = 3e3  # 弹簧系数
 dashpot_damping = 3e4  # 阻尼系数
-drag_damping = 1  # 空气阻力系数
-
-ball_radius = 0.3  # 球的半径
-ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 球的中心位置
-ball_center[0] = [0, 0, 0]  # 初始化球的中心位置
+drag_damping = 1e3  # 空气阻力系数
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
 v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
@@ -32,14 +33,17 @@ spring_offsets = []#弹簧偏移量
 
 @ti.kernel
 def initialize_mass_points():
-    for i, j in x:
-        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random() - 0.5]) * 0.05  # 随机偏移量
+    for i, j in x:# 初始化质点位置
+        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.02  # 随机偏移量
         x[i, j] = [
             i * quad_size - cloth_size_x * 0.5,
             j * quad_size - cloth_size_y * 0.5,
-            0.5
-        ]  # 初始化质点位置
-        x[i, j] += random_offset  # 添加随机偏移量
+            0.0
+        ] 
+        x[i, j][0] *= abs(x[i, j][0]/ellipse_short)**0.6 * ellipse_short /(abs(x[i, j][0])+1e-5)#减少顶部质点密度
+        x[i, j][2] = ellipse_long * 1.01 * (1-(x[i, j][0]/(ellipse_short*1.01))**2)**0.5#定义椭圆
+        if i!=0 and i!=n_x-1:#固定两端
+            x[i, j] += random_offset  # 添加随机偏移量
         v[i, j] = [0, 0, 0]  # 初始化质点速度
 
 @ti.kernel
@@ -108,13 +112,16 @@ def substep():
         v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
         offset_to_center = x[n] - ball_center[0]
         offset_to_center[1] = 0#当作圆柱处理
-        if offset_to_center.norm() <= ball_radius:# 碰撞检测
-            if abs(n[0]*quad_size-cloth_size_x * 0.5-ball_center[0][0])<=quad_size*0.5:
+        # 碰撞检测
+        #if offset_to_center.norm() <= ellipse_short:
+        if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
+            if abs(n[0]*quad_size-cloth_size_x * 0.5-ball_center[0][0])<=quad_size*0.5:#固定中心点
                 v[n] = [0, 0, 0]
             else:
                 normal = offset_to_center.normalized()# 速度投影
                 v[n] -= min(v[n].dot(normal), 0) * normal
-        x[n] += dt * v[n]  # 更新位置
+        if n[0]!=0 and n[0]!=n_x-1:#固定两端
+            x[n] += dt * v[n]  # 更新位置
 
 @ti.kernel
 def update_vertices():
@@ -133,10 +140,10 @@ if __name__ == '__main__':  # 主函数
     initialize_mass_points()  # 初始化质点
 
     current_t = 0.0
-    substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
+    substeps = 1#int(1 / 60 // dt)  # 每帧的子步数
     first_half = ti.Vector.field(3, dtype=float, shape=n_x)
     while window.running:
-        if current_t > 1.7:
+        if current_t > 1.0:
             # 重置
             initialize_mass_points()
             current_t = 0
@@ -146,7 +153,7 @@ if __name__ == '__main__':  # 主函数
             current_t += dt
         update_vertices()  # 更新顶点
 
-        camera.position(2.0, 2.0, 0.0)  # 设置相机位置
+        camera.position(0.0, -2.0, 0.0)  # 设置相机位置
         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
         camera.up(0, 0, 1)
         scene.set_camera(camera)
@@ -155,7 +162,7 @@ if __name__ == '__main__':  # 主函数
         scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
         #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
         # 绘制一个较小的球以避免视觉穿透
-        #scene.particles(ball_center, radius=ball_radius * 0.95, color=(0.5, 0.42, 0.8))
+        scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
         for i in range(n_x):
             first_half[i] = vertices[i]
