@@ -15,8 +15,8 @@ cloth_size_y = quad_size * (n_y - 1)  # 布料大小
 dt = 3e-4  # 时间步长
 
 gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
-spring_Y = 3e3  # 弹簧系数
-dashpot_damping = 3e4  # 阻尼系数
+spring_Y = 3e3  # 弹簧系数--长度相关
+dashpot_damping = 3e4  # 阻尼系数--速度差相关
 drag_damping = 1e3  # 空气阻力系数
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
@@ -29,7 +29,7 @@ vertices = ti.Vector.field(3, dtype=float, shape=n_x * n_y)  # 顶点位置
 colors = ti.Vector.field(3, dtype=float, shape=n_x * n_y)  # 顶点颜色
 
 bending_springs = True  # 是否使用弯曲弹簧
-spring_offsets = []#弹簧偏移量
+spring_offsets = [] #弹簧偏移量---算子计算范围
 
 @ti.kernel
 def initialize_mass_points():
@@ -85,27 +85,27 @@ def substep():
 
     for n in ti.grouped(x):
         force = ti.Vector([0.0, 0.0, 0.0])
-        for spring_offset in ti.static(spring_offsets):
+        for spring_offset in ti.static(spring_offsets):#core
             m = n + spring_offset
             if 0 <= m[0] < n_x and 0 <= m[1] < n_y:
-                x_ij = x[n] - x[m]
-                v_ij = v[n] - v[m]
-                d = x_ij.normalized()
-                current_dist = x_ij.norm()
-                original_dist = quad_size * float(n - m).norm()
+                bias_x = x[n] - x[m]
+                bias_v = v[n] - v[m]
+                direct_mn = bias_x.normalized()
+                current_dist = bias_x.norm()
+                original_dist = quad_size * spring_offset.norm()
                 # 弹簧力
-                force += -spring_Y * d * (current_dist / original_dist - 1)
+                force += -spring_Y * direct_mn * (current_dist / original_dist - 1)
                 # 阻尼力
-                force += -v_ij.dot(d) * d * dashpot_damping * quad_size
+                force += -bias_v.dot(direct_mn) * direct_mn * dashpot_damping * quad_size
         dv = force * dt
         for i_c in ti.static(range(3)):
             tmpValue = v[n][i_c]
-            if (dv[i_c]+tmpValue) * tmpValue < 0:
+            if (dv[i_c]+tmpValue) * tmpValue < 0:#限制反向
                 dv[i_c]=-tmpValue
         v[n] += dv#force * dt  # 更新速度
         for i_c in ti.static(range(3)):
             tmpValue = abs(v[n][i_c])
-            if tmpValue > 0.5:
+            if tmpValue > 0.5:#限制最大速度
                 v[n][i_c] /= tmpValue * 2
 
     for n in ti.grouped(x):
