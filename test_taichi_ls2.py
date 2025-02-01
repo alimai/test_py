@@ -28,6 +28,9 @@ x2 = ti.field(ti.f32)
 #x2[None] = -r_level1 - 0.1
 pixel.place(x1, x2)
 
+# n_act = ti.field(ti.i32)
+# block3.place(n_act)
+
 @ti.kernel
 def activate():
     x1[2,3] = 1.0
@@ -398,7 +401,7 @@ gui.show()
 step = 0
 value_step = 0.3
 start_time = time.time()
-while gui.running:#step < 500:#
+while step < 5000:# gui.running:#
     step += 1
     #print("step = ", step)
     process_core(value_step, step)
