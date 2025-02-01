@@ -22,12 +22,6 @@ drag_damping = 1e3  # 空气阻力系数
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
 v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
 
-#用于绘制的数据
-num_triangles = (n_x - 1) * (n_y - 1) * 2  # 三角形数量
-indices = ti.field(int, shape=num_triangles * 3)  # 三角形顶点索引
-vertices = ti.Vector.field(3, dtype=float, shape=n_x * n_y)  # 顶点位置
-colors = ti.Vector.field(3, dtype=float, shape=n_x * n_y)  # 顶点颜色
-
 bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets = [] #弹簧偏移量---算子计算范围
 
@@ -45,25 +39,6 @@ def initialize_mass_points():
         if i!=0 and i!=n_x-1:#固定两端
             x[i, j] += random_offset  # 添加随机偏移量
         v[i, j] = [0, 0, 0]  # 初始化质点速度
-
-@ti.kernel
-def initialize_mesh_indices():
-    for i, j in ti.ndrange(n_x - 1, n_y - 1):
-        quad_id = (j * (n_x - 1)) + i
-        # 第一个三角形
-        indices[quad_id * 6 + 0] = j * n_x + i
-        indices[quad_id * 6 + 1] = (j + 1) * n_x + i
-        indices[quad_id * 6 + 2] = j * n_x + (i + 1)
-        # 第二个三角形
-        indices[quad_id * 6 + 3] = (j + 1) * n_x + i + 1
-        indices[quad_id * 6 + 4] = j * n_x + (i + 1)
-        indices[quad_id * 6 + 5] = (j + 1) * n_x + i
-
-    for i, j in ti.ndrange(n_x, n_y):
-        if (j // 4 + i // 4) % 2 == 0:
-            colors[j * n_x + i] = (0.22, 0.72, 0.52)  # 设置顶点颜色
-        else:
-            colors[j * n_x + i] = (0, 0.334, 0.52)  # 设置顶点颜色
 
 def add_spring_offsets():
     if bending_springs:
@@ -123,11 +98,6 @@ def substep():
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             x[n] += dt * v[n]  # 更新位置
 
-@ti.kernel
-def update_vertices():
-    for i, j in ti.ndrange(n_x, n_y):
-        vertices[j * n_x + i] = x[i, j]  # 更新顶点位置
-
 if __name__ == '__main__':  # 主函数
     window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024), vsync=True)  # 创建窗口
     canvas = window.get_canvas()
@@ -135,7 +105,6 @@ if __name__ == '__main__':  # 主函数
     scene = window.get_scene()
     camera = ti.ui.make_camera()
 
-    initialize_mesh_indices()  # 初始化网格索引
     add_spring_offsets()
     initialize_mass_points()  # 初始化质点
 
@@ -151,7 +120,6 @@ if __name__ == '__main__':  # 主函数
         for i in range(substeps):
             substep()  # 执行子步
             current_t += dt
-        update_vertices()  # 更新顶点
 
         camera.position(0.0, -2.0, 0.0)  # 设置相机位置
         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
@@ -165,7 +133,7 @@ if __name__ == '__main__':  # 主函数
         scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
         for i in range(n_x):
-            first_half[i] = vertices[i]
+            first_half[i] = x[i, 0]
         scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
 
         canvas.scene(scene)
