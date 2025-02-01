@@ -1,17 +1,17 @@
 import taichi as ti
 ti.init(arch=ti.cpu)  # 初始化Taichi，使用CPU架构
 
-ellipse_short = 0.3  # 椭圆的短轴
-ellipse_long = 0.5  # 椭圆的长轴
-ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 球的中心位置
-ball_center[0] = [0, 0, 0]  # 初始化球的中心位置
+ellipse_long = 0.5  # mm,椭圆的长轴
+ellipse_short = 0.3  # mm,椭圆的短轴
+ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 椭圆的中心位置
+ball_center[0] = [0, 0, 0]  # 初始化
 
 n_x = 32  # 质点数目
 cloth_size_x = ellipse_short * 2  # 布料大小
-quad_size = cloth_size_x / (n_x - 1)  # 每个网格的大小
+cloth_quad_size = cloth_size_x / n_x  # 每个网格的大小
 
 n_y = 2  # 质点数目
-cloth_size_y = quad_size * (n_y - 1)  # 布料大小
+cloth_size_y = cloth_quad_size * n_y  # 布料大小
 dt = 3e-4  # 时间步长
 
 gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
@@ -25,13 +25,78 @@ v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
 bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets = [] #弹簧偏移量---算子计算范围
 
+
+
+
+r_level0 = 0.75 #网格数
+r_level1 = 1.1#网格数，+1.1>1.0防止数值误差
+
+block1 = ti.root.pointer(ti.ijk, (8, 2, 8))
+block2 = block1.pointer(ti.ijk, (8, 2, 8))
+pixel = block2.bitmasked(ti.ijk, (8, 2, 8))
+
+field1 = ti.field(ti.f32)
+field2 = ti.field(ti.f32)
+pixel.place(field1, field2)
+
+bg_n_x = pixel.shape[0]
+bg_n_y = pixel.shape[1]
+bg_n_z = pixel.shape[2]
+
+bg_size_x = ellipse_long * 2 * 1.2
+bg_quad_size = bg_size_x /bg_n_x
+bg_size_y = bg_quad_size * bg_n_y
+bg_size_z = bg_quad_size * bg_n_z
+
+@ti.kernel
+def init_field_data()->int:
+    bg_n_act = 0
+    n_layers = int(0.05 / bg_quad_size)
+    target_radius_long = ellipse_long / bg_quad_size
+    target_radius_short = ellipse_short / bg_quad_size
+    target_center = [bg_n_x/2-0.5, bg_n_y/2-0.5, bg_n_z/2-0.5]
+    target_radius_focal = ti.sqrt(target_radius_long**2 - target_radius_short**2)
+    target_focal_top = [target_center[0], target_center[1], target_center[2]+target_radius_focal]
+    target_focal_bottom = [target_center[0], target_center[1], target_center[2]-target_radius_focal]
+    for i, j, k in ti.ndrange(bg_n_x, bg_n_y, bg_n_z):
+        dist_focal = ti.sqrt((i-target_focal_top[0])**2+(k-target_focal_top[2])**2)\
+        +ti.sqrt((i-target_focal_bottom[0])**2+(k-target_focal_bottom[2])**2)
+        dist_bias = dist_focal-target_radius_long*2
+        if abs(dist_bias) <= r_level0+(n_layers-1)*r_level1:
+            for n in range(n_layers):
+                if abs(dist_bias) <= r_level0+n*r_level1:
+                    field1[i, j, k] = n
+                    field2[i, j, k] = -(r_level0+n_layers*r_level1+0.1)
+                    bg_n_act += 1
+                    break
+    return bg_n_act
+
+bg_n_act = init_field_data()
+field1_index = ti.Vector.field(3, dtype=float, shape=bg_n_act) 
+
+@ti.kernel
+def transe_field_data():
+    bg_n_tmp=0
+    ti.loop_config(serialize=True)
+    for i, j, k in pixel:
+        if k > bg_n_z/2-0.5:#只绘制上半部分
+            field1_index[bg_n_tmp] = [i*bg_quad_size-bg_size_x*0.5,
+                                        j*bg_quad_size-bg_size_y*0.5,
+                                        k*bg_quad_size-bg_size_z*0.5]
+        bg_n_tmp += 1
+    assert(bg_n_act == bg_n_tmp)
+
+
+
+
+
 @ti.kernel
 def initialize_mass_points():
     for i, j in x:# 初始化质点位置
         random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.02  # 随机偏移量
         x[i, j] = [
-            i * quad_size - cloth_size_x * 0.5,
-            j * quad_size - cloth_size_y * 0.5,
+            i * cloth_quad_size - cloth_size_x * 0.5 + 0.5 * cloth_quad_size,
+            j * cloth_quad_size - cloth_size_y * 0.5 + 0.5 * cloth_quad_size,
             0.0
         ] 
         x[i, j][0] *= abs(x[i, j][0]/ellipse_short)**0.6 * ellipse_short /(abs(x[i, j][0])+1e-5)#减少顶部质点密度
@@ -67,11 +132,11 @@ def substep():
                 bias_v = v[n] - v[m]
                 direct_mn = bias_x.normalized()
                 current_dist = bias_x.norm()
-                original_dist = quad_size * spring_offset.norm()
+                original_dist = cloth_quad_size * spring_offset.norm()
                 # 弹簧力
                 force += -spring_Y * direct_mn * (current_dist / original_dist - 1)
                 # 阻尼力
-                force += -bias_v.dot(direct_mn) * direct_mn * dashpot_damping * quad_size
+                force += -bias_v.dot(direct_mn) * direct_mn * dashpot_damping * cloth_quad_size
         dv = force * dt
         for i_c in ti.static(range(3)):
             tmpValue = v[n][i_c]
@@ -90,7 +155,7 @@ def substep():
         # 碰撞检测
         #if offset_to_center.norm() <= ellipse_short:
         if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
-            if abs(n[0]*quad_size-cloth_size_x * 0.5-ball_center[0][0])<=quad_size*0.5:#固定中心点
+            if abs(n[0]*cloth_quad_size-cloth_size_x * 0.5-ball_center[0][0])<=cloth_quad_size*0.5:#固定中心点
                 v[n] = [0, 0, 0]
             else:
                 normal = offset_to_center.normalized()# 速度投影
@@ -104,6 +169,8 @@ if __name__ == '__main__':  # 主函数
     canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
     scene = window.get_scene()
     camera = ti.ui.make_camera()
+    
+    transe_field_data()
 
     add_spring_offsets()
     initialize_mass_points()  # 初始化质点
@@ -111,6 +178,17 @@ if __name__ == '__main__':  # 主函数
     current_t = 0.0
     substeps = 1#int(1 / 60 // dt)  # 每帧的子步数
     first_half = ti.Vector.field(3, dtype=float, shape=n_x)
+    first_half = ti.Vector.field(3, dtype=float, shape=n_x)
+
+    # bg_n_act = init_field_data()
+    # field1_index = ti.Vector.field(3, dtype=float, shape=bg_n_act) 
+    # transe_field_data(field1_index)
+    # bg_n_tmp=0   
+    # for i, j, k in pixel:
+    #     field1_index[bg_n_tmp] = [i*bg_quad_size, j*bg_quad_size, k*bg_quad_size]
+    #     bg_n_tmp += 1
+    
+
     while window.running:
         if current_t > 1.0:
             # 重置
@@ -130,11 +208,12 @@ if __name__ == '__main__':  # 主函数
         scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
         #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
         # 绘制一个较小的球以避免视觉穿透
-        scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
+        #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
         for i in range(n_x):
             first_half[i] = x[i, 0]
         scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+        scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
         canvas.scene(scene)
         window.show()
