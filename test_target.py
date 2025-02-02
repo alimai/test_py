@@ -106,14 +106,14 @@ def add_field_offsets():
 
 @ti.kernel
 def initialize_mass_points():
-    cloth_size_x = ellipse_short * 2  # 布料大小
-    cloth_size_y = cloth_size_x * n_y / n_x  # 布料大小        
-    quad_size = cloth_size_x / n_x
+    size_x = ellipse_short * 2  # 分布范围
+    size_y = size_x * n_y / n_x  # 分布范围        
+    quad_size = size_x / n_x
     for i, j in x:# 初始化质点位置
         random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.02  # 随机偏移量
         x[i, j] = [
-            i * quad_size - cloth_size_x * 0.5 + 0.5 * quad_size,
-            j * quad_size - cloth_size_y * 0.5 + 0.5 * quad_size,
+            i * quad_size - size_x * 0.5 + 0.5 * quad_size,
+            j * quad_size - size_y * 0.5 + 0.5 * quad_size,
             0.0
         ] 
         x[i, j][0] *= abs(x[i, j][0]/ellipse_short)**0.6 * ellipse_short /(abs(x[i, j][0])+1e-5)#减少顶部质点密度
@@ -210,7 +210,7 @@ def substep():
 
 
 if __name__ == '__main__':  # 主函数
-    window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024), vsync=True)  # 创建窗口
+    window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
     canvas = window.get_canvas()
     canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
     scene = window.get_scene()
