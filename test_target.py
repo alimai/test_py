@@ -1,3 +1,4 @@
+import numpy as np
 import taichi as ti
 ti.init(arch=ti.cpu)  # 初始化Taichi，使用CPU架构
 
@@ -15,8 +16,8 @@ cloth_size_y = cloth_quad_size * n_y  # 布料大小
 dt = 3e-4  # 时间步长
 
 gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
-spring_Y = 3e3  # 弹簧系数--长度相关
-dashpot_damping = 3e4  # 阻尼系数--速度差相关
+spring_Y = 3e5  # 弹簧系数--长度相关
+dashpot_damping = 3e3  # 阻尼系数--速度差相关
 drag_damping = 1e3  # 空气阻力系数
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
@@ -29,46 +30,109 @@ spring_offsets = [] #弹簧偏移量---算子计算范围
 
 
 r_level0 = 0.75 #网格数
-r_level1 = 1.1#网格数，+1.1>1.0防止数值误差
+r_level1 = 1.1 #>1.0防止数值误差
+r_leveln = -1.1 
 
-block1 = ti.root.pointer(ti.ijk, (8, 2, 8))
-block2 = block1.pointer(ti.ijk, (8, 2, 8))
-pixel = block2.bitmasked(ti.ijk, (8, 2, 8))
+block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
+block2 = block1.pointer(ti.ijk, (8, 4, 8))
+voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
 
 field1 = ti.field(ti.f32)
 field2 = ti.field(ti.f32)
-pixel.place(field1, field2)
+voxels.place(field1, field2)
 
-bg_n_x = pixel.shape[0]
-bg_n_y = pixel.shape[1]
-bg_n_z = pixel.shape[2]
-
+bg_n = voxels.shape
 bg_size_x = ellipse_long * 2 * 1.2
-bg_quad_size = bg_size_x /bg_n_x
-bg_size_y = bg_quad_size * bg_n_y
-bg_size_z = bg_quad_size * bg_n_z
+bg_quad_size = bg_size_x / bg_n[0]
+bg_size_y = bg_quad_size * bg_n[1]
+bg_size_z = bg_quad_size * bg_n[2]
+
+
+field_damping = 1e7
+field_offset = []
+
+def add_field_offsets():
+        for i in range(-1, 2):
+            for j in range(-1, 2):
+                for k in range(-1, 2):
+                    if (i, j, k) != (0, 0, 0) and abs(i) + abs(j) <= 2:
+                        field_offset.append(ti.Vector([i, j, k]))
+@ti.func
+def update_neighbours(i_nb, j_nb, k_nb, value_new)->bool:
+    if i_nb < 0 or i_nb >= bg_n[0] \
+        or j_nb < 0 or j_nb >= bg_n[1] \
+        or k_nb < 0 or k_nb >= bg_n[2]: 
+            return False
+    if not ti.is_active(voxels, [i_nb, j_nb, k_nb]): 
+        field1[i_nb, j_nb, k_nb] = value_new
+        field2[i_nb, j_nb, k_nb] = r_leveln
+    elif field1[i_nb, j_nb, k_nb] > value_new:
+        field1[i_nb, j_nb, k_nb] = value_new
+    else:
+        return False
+    return True
 
 @ti.kernel
 def init_field_data()->int:
     bg_n_act = 0
-    n_layers = int(0.05 / bg_quad_size)
+    n_layers = int(0.1 / bg_quad_size)
     target_radius_long = ellipse_long / bg_quad_size
     target_radius_short = ellipse_short / bg_quad_size
-    target_center = [bg_n_x/2-0.5, bg_n_y/2-0.5, bg_n_z/2-0.5]
+    target_center = [bg_n[0]/2-0.5, bg_n[1]/2-0.5, bg_n[2]/2-0.5]
     target_radius_focal = ti.sqrt(target_radius_long**2 - target_radius_short**2)
     target_focal_top = [target_center[0], target_center[1], target_center[2]+target_radius_focal]
     target_focal_bottom = [target_center[0], target_center[1], target_center[2]-target_radius_focal]
-    for i, j, k in ti.ndrange(bg_n_x, bg_n_y, bg_n_z):
+    target_center_y = int(target_center[1])
+    for i, j, k in ti.ndrange(bg_n[0], 1, bg_n[2]):
         dist_focal = ti.sqrt((i-target_focal_top[0])**2+(k-target_focal_top[2])**2)\
         +ti.sqrt((i-target_focal_bottom[0])**2+(k-target_focal_bottom[2])**2)
         dist_bias = dist_focal-target_radius_long*2
-        if abs(dist_bias) <= r_level0+(n_layers-1)*r_level1:
-            for n in range(n_layers):
-                if abs(dist_bias) <= r_level0+n*r_level1:
-                    field1[i, j, k] = n
-                    field2[i, j, k] = -(r_level0+n_layers*r_level1+0.1)
-                    bg_n_act += 1
-                    break
+        if abs(dist_bias) <= r_level0:
+            for n in range(3):
+                field1[i, target_center_y-1+n, k] = 0
+                field2[i, target_center_y-1+n, k] = r_leveln
+                bg_n_act += 1
+    for n in ti.static(range(n_layers)):
+        for i,j,k in voxels:
+            if field1[i, j, k] == n:
+                if update_neighbours(i+1, j, k, n+1):bg_n_act += 1
+        for i,j,k in voxels:
+            if field1[i, j, k] == n:
+                if update_neighbours(i-1, j, k, n+1):bg_n_act += 1
+        for i,j,k in voxels:
+            if field1[i, j, k] == n:
+                if update_neighbours(i, j+1, k, n+1):bg_n_act += 1
+        for i,j,k in voxels:
+            if field1[i, j, k] == n:
+                if update_neighbours(i, j-1, k, n+1):bg_n_act += 1
+        for i,j,k in voxels:
+            if field1[i, j, k] == n:
+                if update_neighbours(i, j, k+1, n+1):bg_n_act += 1
+        for i,j,k in voxels:
+            if field1[i, j, k] == n:
+                if update_neighbours(i, j, k-1, n+1):bg_n_act += 1
+
+    # for i, j, k in ti.ndrange(bg_n[0], bg_n[1], bg_n[2]):
+    #     dist_focal = ti.sqrt((i-target_focal_top[0])**2+(k-target_focal_top[2])**2)\
+    #     +ti.sqrt((i-target_focal_bottom[0])**2+(k-target_focal_bottom[2])**2)
+    #     dist_bias = dist_focal-target_radius_long*2
+    #     if abs(dist_bias) <= r_level0+(n_layers-1)*r_level1:
+    #         for n in range(n_layers):
+    #             if abs(dist_bias) <= r_level0+n*r_level1:
+    #                 field1[i, j, k] = n
+    #                 field2[i, j, k] = -(r_level0+n_layers*r_level1+0.1)
+    #                 bg_n_act += 1
+    #                 break
+    #                 # if dist_bias > 0:
+    #                 #     field1[i, j, k] = n
+    #                 #     field2[i, j, k] = -(r_level0+n_layers*r_level1+0.1)
+    #                 #     bg_n_act += 1
+    #                 #     break
+    #                 # else:
+    #                 #     field1[i, j, k] = -n
+    #                 #     field2[i, j, k] = -(r_level0+n_layers*r_level1+0.1)
+    #                 #     bg_n_act += 1
+    #                 #     break
     return bg_n_act
 
 bg_n_act = init_field_data()
@@ -78,13 +142,14 @@ field1_index = ti.Vector.field(3, dtype=float, shape=bg_n_act)
 def transe_field_data():
     bg_n_tmp=0
     ti.loop_config(serialize=True)
-    for i, j, k in pixel:
-        if k > bg_n_z/2-0.5:#只绘制上半部分
+    for i, j, k in voxels:
+        if j == ti.ceil(bg_n[1]/2) and k > bg_n[2]/2-0.5:#只绘制上半部分
             field1_index[bg_n_tmp] = [i*bg_quad_size-bg_size_x*0.5,
                                         j*bg_quad_size-bg_size_y*0.5,
                                         k*bg_quad_size-bg_size_z*0.5]
         bg_n_tmp += 1
     assert(bg_n_act == bg_n_tmp)
+
 
 
 
@@ -120,12 +185,12 @@ def add_spring_offsets():
 
 @ti.kernel
 def substep():
-    for n in ti.grouped(x):
-        v[n] += gravity * dt  # 施加重力
+    # for n in ti.grouped(x):
+    #     v[n] += gravity * dt  # 施加重力
 
-    for n in ti.grouped(x):
+    for n in ti.grouped(x):#core
         force = ti.Vector([0.0, 0.0, 0.0])
-        for spring_offset in ti.static(spring_offsets):#core
+        for spring_offset in ti.static(spring_offsets):
             m = n + spring_offset
             if 0 <= m[0] < n_x and 0 <= m[1] < n_y:
                 bias_x = x[n] - x[m]
@@ -134,34 +199,49 @@ def substep():
                 current_dist = bias_x.norm()
                 original_dist = cloth_quad_size * spring_offset.norm()
                 # 弹簧力
-                force += -spring_Y * direct_mn * (current_dist / original_dist - 1)
+                #force += -spring_Y * direct_mn * (current_dist / original_dist - 1)
                 # 阻尼力
-                force += -bias_v.dot(direct_mn) * direct_mn * dashpot_damping * cloth_quad_size
+                #force += -dashpot_damping * direct_mn * bias_v.dot(direct_mn) * cloth_quad_size
+        # 场力
+        pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
+                       (x[n][1]+bg_size_y*0.5)/bg_quad_size,
+                       (x[n][2]+bg_size_z*0.5)/bg_quad_size])
+        for i in ti.static(range(3)):
+            if abs(pos[i]-int(pos[i]))<1e-3: pos[i] += 1e-3#防止pos[i]为整数
+            pos[i] = min(max(1e-3, pos[i]), bg_n[i]-1-1e-3)#限制边界
+        pos_down = ti.floor(pos)
+        for i in ti.static(range(3)):
+            pos_up = pos_down
+            pos_up[i] = ti.ceil(pos[i])
+            direct_ud = (pos_up - pos_down).normalized()
+            field_up = field1[ti.cast(pos_up, ti.i32)]
+            field_down = field1[ti.cast(pos_down, ti.i32)]
+            print("field_bias:",ti.cast(pos_up, ti.i32), ti.cast(pos_down, ti.i32), direct_ud, field_up-field_down)
+            force += -(field_up-field_down)*direct_ud*field_damping
+        
         dv = force * dt
-        for i_c in ti.static(range(3)):
-            tmpValue = v[n][i_c]
-            if (dv[i_c]+tmpValue) * tmpValue < 0:#限制反向
-                dv[i_c]=-tmpValue
         v[n] += dv#force * dt  # 更新速度
         for i_c in ti.static(range(3)):
             tmpValue = abs(v[n][i_c])
             if tmpValue > 0.5:#限制最大速度
                 v[n][i_c] /= tmpValue * 2
 
-    for n in ti.grouped(x):
-        v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
-        offset_to_center = x[n] - ball_center[0]
-        offset_to_center[1] = 0#当作圆柱处理
-        # 碰撞检测
-        #if offset_to_center.norm() <= ellipse_short:
-        if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
-            if abs(n[0]*cloth_quad_size-cloth_size_x * 0.5-ball_center[0][0])<=cloth_quad_size*0.5:#固定中心点
-                v[n] = [0, 0, 0]
-            else:
-                normal = offset_to_center.normalized()# 速度投影
-                v[n] -= min(v[n].dot(normal), 0) * normal
+    # for n in ti.grouped(x):
+    #     v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
+        # # 碰撞检测
+        # offset_to_center = x[n] - ball_center[0]
+        # offset_to_center[1] = 0#当作圆柱处理
+        # #if offset_to_center.norm() <= ellipse_short:
+        # if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
+        #     if abs(n[0]*cloth_quad_size-cloth_size_x * 0.5-ball_center[0][0])<=cloth_quad_size*0.5:#固定中心点
+        #         v[n] = [0, 0, 0]
+        #     else:
+        #         normal = offset_to_center.normalized()# 速度投影
+        #         v[n] -= min(v[n].dot(normal), 0) * normal
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             x[n] += dt * v[n]  # 更新位置
+
+
 
 if __name__ == '__main__':  # 主函数
     window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024), vsync=True)  # 创建窗口
@@ -170,13 +250,14 @@ if __name__ == '__main__':  # 主函数
     scene = window.get_scene()
     camera = ti.ui.make_camera()
     
-    transe_field_data()
+    add_field_offsets()
+    transe_field_data() # for display 
 
     add_spring_offsets()
     initialize_mass_points()  # 初始化质点
 
     current_t = 0.0
-    substeps = 1#int(1 / 60 // dt)  # 每帧的子步数
+    substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
     first_half = ti.Vector.field(3, dtype=float, shape=n_x)
     first_half = ti.Vector.field(3, dtype=float, shape=n_x)
 
@@ -188,9 +269,9 @@ if __name__ == '__main__':  # 主函数
     #     field1_index[bg_n_tmp] = [i*bg_quad_size, j*bg_quad_size, k*bg_quad_size]
     #     bg_n_tmp += 1
     
-
+    total_time = 1.0
     while window.running:
-        if current_t > 1.0:
+        if current_t > total_time:
             # 重置
             initialize_mass_points()
             current_t = 0
@@ -199,7 +280,12 @@ if __name__ == '__main__':  # 主函数
             substep()  # 执行子步
             current_t += dt
 
-        camera.position(0.0, -2.0, 0.0)  # 设置相机位置
+        if current_t < total_time*0.5:
+            camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+        else:
+            camera.position(2.0 * np.sin((current_t-total_time*0.5)*np.pi*10),
+                            2.0 * np.cos((current_t-total_time*0.5)*np.pi*10),
+                            0.0)  # 设置相机位置
         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
         camera.up(0, 0, 1)
         scene.set_camera(camera)
