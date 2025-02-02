@@ -9,11 +9,11 @@ ball_center[0] = [0, 0, 0]  # 初始化
 
 n_x = 32  # 控制点行数
 n_y = 2  # 控制点列数
-tooth_size = 0.02#牙齿大小
+tooth_size = 0.01#牙齿大小
 dt = 3e-4  # 时间步长
 
 spring_YP = 3e3  # 弹簧系数--长度相关
-spring_YN = 3e5  # 弹簧系数--长度相关
+spring_YN = 3e4  # 弹簧系数--长度相关
 dashpot_damping = 3e1  # 阻尼系数--速度差相关
 drag_damping = 1e1  # 空气阻力系数
 field_damping = 1e3
@@ -153,9 +153,9 @@ def substep():
                 original_dist = tooth_size * spring_offset.norm()
                 #弹簧力
                 if current_dist > original_dist:
-                    force += -spring_YP * direct_mn * (current_dist / original_dist - 1)
+                    force += -spring_YP * direct_mn * (current_dist / original_dist - 1)**2
                 else:
-                    force += -spring_YN * direct_mn * (current_dist / original_dist - 1)
+                    force += spring_YN * direct_mn * (1 - current_dist / original_dist)**2
                 #阻尼力
                 force += -dashpot_damping * direct_mn * bias_v.dot(direct_mn) * tooth_size
         # 场力
@@ -249,8 +249,8 @@ if __name__ == '__main__':  # 主函数
         if current_t < total_time*0.5:
             camera.position(0.0, 2.0, 0.0)  # 设置相机位置
         else:
-            camera.position(2.0 * np.sin((current_t-total_time*0.5)*np.pi*10),
-                            2.0 * np.cos((current_t-total_time*0.5)*np.pi*10),
+            camera.position(2.0 * np.sin((current_t-total_time*0.5)*np.pi*5),
+                            2.0 * np.cos((current_t-total_time*0.5)*np.pi*5),
                             0.0)  # 设置相机位置
         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
         camera.up(0, 0, 1)
