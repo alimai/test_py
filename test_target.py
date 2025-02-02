@@ -12,11 +12,11 @@ n_y = 2  # 控制点列数
 tooth_size = 0.02#牙齿大小
 dt = 3e-4  # 时间步长
 
-spring_YP = 3e5  # 弹簧系数--长度相关
-spring_YN = 3e7  # 弹簧系数--长度相关
-dashpot_damping = 3e3  # 阻尼系数--速度差相关
-drag_damping = 1e3  # 空气阻力系数
-field_damping = 1e5
+spring_YP = 3e3  # 弹簧系数--长度相关
+spring_YN = 3e5  # 弹簧系数--长度相关
+dashpot_damping = 3e1  # 阻尼系数--速度差相关
+drag_damping = 1e1  # 空气阻力系数
+field_damping = 1e3
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
 v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
@@ -28,7 +28,7 @@ spring_offsets = [] #弹簧偏移量---算子计算范围
 
 
 r_level0 = 0.75 #网格数
-r_level1 = 1.1#网格数，+1.1>1.0防止数值误差
+r_level1 = 1.1 #网格数，+1.1>1.0防止数值误差
 
 block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
 block2 = block1.pointer(ti.ijk, (8, 4, 8))
@@ -165,20 +165,31 @@ def substep():
         for i in ti.static(range(3)):
             if abs(pos[i]-int(pos[i]))<1e-3: pos[i] += 1e-3#防止pos[i]为整数
             pos[i] = min(max(1e-3, pos[i]), bg_n[i]-1-1e-3)#限制边界
-        pos_down = ti.floor(pos)
+        pos_down = ti.ceil(pos)#
+        pos_up = ti.floor(pos)#
         for i in ti.static(range(3)):
-            pos_up = pos_down
-            pos_up[i] = ti.ceil(pos[i])
-            direct_ud = (pos_up - pos_down).normalized()
-            field_up = field1[ti.cast(pos_up, ti.i32)]
+            pos_check1 = pos_down
+            pos_check1[i] = ti.floor(pos[i])#ti.ceil(pos[i])#
+            direct_ud = (pos_check1 - pos_down).normalized()
+            field_check1 = field1[ti.cast(pos_check1, ti.i32)]
             field_down = field1[ti.cast(pos_down, ti.i32)]
-            force += -(field_up-field_down)*direct_ud*field_damping
-        if pos_down[1] > bg_n[1]*0.5+0.5:
-            force += ti.Vector([0.0, -1.0, 0.0])*field_damping
-        elif pos_down[1] < bg_n[1]*0.5-0.5:
-            force += ti.Vector([0.0, 1.0, 0.0])*field_damping
+            force += -(field_check1-field_down)*direct_ud*field_damping
+            
+            pos_check2 = pos_up
+            pos_check2[i] = ti.ceil(pos[i])#
+            direct_ud = (pos_check2 - pos_up).normalized()
+            field_check2 = field1[ti.cast(pos_check2, ti.i32)]
+            field_up = field1[ti.cast(pos_up, ti.i32)]
+            force += -(field_check2-field_up)*direct_ud*field_damping
+        if pos[1] > bg_n[1]*0.5+0.5:
+            force += ti.Vector([0.0, -0.5, 0.0])*field_damping
+        elif pos[1] < bg_n[1]*0.5-0.5:
+            force += ti.Vector([0.0, 0.5, 0.0])*field_damping
+        else:
+            force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping
         
-        v[n] += force * dt  # 更新速度
+        #v[n] += force * dt  # 更新速度
+        v[n] = force * dt  # 更新速度
         for i_c in ti.static(range(3)):
             tmpValue = abs(v[n][i_c])
             if tmpValue > 0.5:#限制最大速度
@@ -193,9 +204,8 @@ def substep():
         # if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
         #         normal = offset_to_center.normalized()# 速度投影
         #         v[n] -= min(v[n].dot(normal), 0) * normal
-        if n[0]==0 or n[0]==n_x-1:#固定两端
-            v[n][2] = 0
-        x[n] += dt * v[n]  # 更新位置
+        if n[0]!=0 and n[0]!=n_x-1:#固定两端
+            x[n] += dt * v[n]  # 更新位置
 
 
 
@@ -254,7 +264,7 @@ if __name__ == '__main__':  # 主函数
 
         for i in range(n_x):
             first_half[i] = x[i, 0]
-        scene.particles(first_half, radius=tooth_size, color=(0.5, 0.42, 0.8))
+        scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
         scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
         canvas.scene(scene)
