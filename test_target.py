@@ -230,8 +230,9 @@ def substep(n_step: int):
         #         v[n] -= min(v[n].dot(normal), 0) * normal
 
     # 添加全局约束
-    ti.sync()   
-    print((force_max_min[0]-force_max_min[1]) * dt, dist_max_min, force_max_min_index)
+    ti.sync()
+    if abs(force_max_min_index[0]-force_max_min_index[1]) > 3:
+        print((force_max_min[0]-force_max_min[1]) * dt, dist_max_min, force_max_min_index)
     for n in ti.grouped(x):
         if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
             if n[0]!=0 and n[0]!=n_x-1:#固定两端 
@@ -269,6 +270,7 @@ if __name__ == '__main__':  # 主函数
     current_t = 0.0
     n_step = 0
     substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
+    point = ti.Vector.field(3, dtype=float, shape=1)
     while window.running:
         if current_t > total_time:
             # 重置
@@ -300,7 +302,6 @@ if __name__ == '__main__':  # 主函数
         # for i in range(n_x):
         #     first_half[i] = x[i, 0]
         # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
-        point = ti.Vector.field(3, dtype=float, shape=1)
         for i in range(n_x):
             point[0] = x[i, 1]
             scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
