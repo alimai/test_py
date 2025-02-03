@@ -1,25 +1,27 @@
 import numpy as np
+import time
 import taichi as ti
-ti.init(arch=ti.cpu)  # 初始化Taichi，使用CPU架构
+ti.init(arch=ti.cpu,random_seed=int(time.time()))  # 初始化Taichi，使用CPU架构
 
-ellipse_long = 0.5  # mm,椭圆的长轴
-ellipse_short = 0.3  # mm,椭圆的短轴
+ellipse_long = 0.6  # mm,椭圆的长轴
+ellipse_short = 0.4  # mm,椭圆的短轴
 ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 椭圆的中心位置
 ball_center[0] = [0, 0, 0]  # 初始化
 
-n_x = 32  # 控制点行数
-n_y = 2  # 控制点列数
+n_x = 15  # 控制点行数
+n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小
 dt = 3e-4  # 时间步长
 
-spring_YP = 3e3  # 弹簧系数--长度相关
-spring_YN = 3e4  # 弹簧系数--长度相关
-dashpot_damping = 3e1  # 阻尼系数--速度差相关
-drag_damping = 1e1  # 空气阻力系数
-field_damping = 1e3
+spring_YP = 3e6  # 引力系数--长度相关
+spring_YN = 3e3  # 斥力系数--长度相关
+dashpot_damping = 1e0  # 阻尼系数--速度差相关
+drag_damping = 1e0  # 空气阻力系数
+field_damping = 1e4
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
 v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
+r = ti.field(ti.f32, shape=(n_x, n_y))  # 质点半径
 
 bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets = [] #弹簧偏移量---算子计算范围
@@ -106,11 +108,12 @@ def add_field_offsets():
 
 @ti.kernel
 def initialize_mass_points():
-    size_x = ellipse_short * 2  # 分布范围
-    size_y = size_x * n_y / n_x  # 分布范围        
-    quad_size = size_x / n_x
+    size_x = ellipse_short * 2  # 分布范围     
+    quad_size = size_x / (n_x+1) # +1使X分布不对称
+    size_y = n_y * quad_size#size_x * n_y / n_x  # 分布范围   
+    index_center_x = 7.5
     for i, j in x:# 初始化质点位置
-        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.02  # 随机偏移量
+        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.03  # 随机偏移量
         x[i, j] = [
             i * quad_size - size_x * 0.5 + 0.5 * quad_size,
             j * quad_size - size_y * 0.5 + 0.5 * quad_size,
@@ -121,17 +124,24 @@ def initialize_mass_points():
         if i!=0 and i!=n_x-1:#固定两端
             x[i, j] += random_offset  # 添加随机偏移量
         v[i, j] = [0, 0, 0]  # 初始化质点速度
+        r[i, j] = tooth_size #初始化半径
+        if abs(i - index_center_x)  > 2:
+            r[i,j] += tooth_size * 0.5
+        if abs(i - index_center_x)  > 3:
+            r[i,j] += tooth_size * 0.5
+        if abs(i - index_center_x)  > 5:
+            r[i,j] += tooth_size * 0.5
 
 def add_spring_offsets():
     if bending_springs:
         for i in range(-1, 2):
-            for j in range(-1, 2):
-                if (i, j) != (0, 0):
+                j=0#for j in range(-1, 2):#暂不考虑Y方向
+                if (i, j) != (0, 0) :
                     spring_offsets.append(ti.Vector([i, j]))  # 添加弯曲弹簧偏移量
 
     else:
         for i in range(-2, 3):
-            for j in range(-2, 3):
+                j=0#for j in range(-2, 3):#暂不考虑Y方向
                 if (i, j) != (0, 0) and abs(i) + abs(j) <= 2:
                     spring_offsets.append(ti.Vector([i, j]))  # 添加普通弹簧偏移量
 
@@ -149,15 +159,17 @@ def substep():
                 bias_x = x[n] - x[m]
                 bias_v = v[n] - v[m]
                 direct_mn = bias_x.normalized()
-                current_dist = bias_x.norm()
-                original_dist = tooth_size * spring_offset.norm()
+                current_dist = bias_x.norm() - (r[n] + r[m])*0.7
+                original_dist = spring_offset.norm() * (r[n] + r[m])*0.7 #tooth_size
                 #弹簧力
                 if current_dist > original_dist:
-                    force += -spring_YP * direct_mn * (current_dist / original_dist - 1)**2
+                    #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
+                    force += -spring_YP * direct_mn * (current_dist - original_dist)#**2
                 else:
-                    force += spring_YN * direct_mn * (1 - current_dist / original_dist)**2
+                    #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
+                    force += spring_YN * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
-                force += -dashpot_damping * direct_mn * bias_v.dot(direct_mn) * tooth_size
+                #force += -dashpot_damping * direct_mn * bias_v.dot(direct_mn) * (r[n] + r[m])#tooth_size
         # 场力
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
@@ -196,7 +208,7 @@ def substep():
                 v[n][i_c] /= tmpValue * 2
 
     for n in ti.grouped(x):
-        v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
+        #v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
         # # 碰撞检测
         # offset_to_center = x[n] - ball_center[0]
         # offset_to_center[1] = 0#当作圆柱处理
@@ -224,7 +236,6 @@ if __name__ == '__main__':  # 主函数
 
     current_t = 0.0
     substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
-    first_half = ti.Vector.field(3, dtype=float, shape=n_x)
     first_half = ti.Vector.field(3, dtype=float, shape=n_x)
 
     # bg_n_act = init_field_data()
@@ -262,9 +273,14 @@ if __name__ == '__main__':  # 主函数
         # 绘制一个较小的球以避免视觉穿透
         #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
+        # for i in range(n_x):
+        #     first_half[i] = x[i, 0]
+        # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+        point = ti.Vector.field(3, dtype=float, shape=1)
         for i in range(n_x):
-            first_half[i] = x[i, 0]
-        scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+            point[0] = x[i, 1]
+            scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+
         scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
         canvas.scene(scene)
