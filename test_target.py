@@ -4,7 +4,7 @@ import taichi as ti
 ti.init(arch=ti.cpu,random_seed=int(time.time()))  # 初始化Taichi，使用CPU架构
 
 ellipse_long = 0.6  # mm,椭圆的长轴
-ellipse_short = 0.4  # mm,椭圆的短轴
+ellipse_short = 0.35  # mm,椭圆的短轴
 ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 椭圆的中心位置
 ball_center[0] = [0, 0, 0]  # 初始化
 
@@ -16,7 +16,7 @@ dt = 3e-4  # 时间步长
 spring_YP = 3e6  # 引力系数--长度相关
 spring_YN = 3e3  # 斥力系数--长度相关
 dashpot_damping = 1e0  # 阻尼系数--速度差相关
-drag_damping = 1e0  # 空气阻力系数
+drag_damping = 1e3  # 空气阻力系数
 field_damping = 1e4
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
@@ -146,7 +146,7 @@ def add_spring_offsets():
                     spring_offsets.append(ti.Vector([i, j]))  # 添加普通弹簧偏移量
 
 @ti.kernel
-def substep():
+def substep(n_step: int):
     #gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
     # for n in ti.grouped(x):
     #     v[n] += gravity * dt  # 施加重力
@@ -179,36 +179,51 @@ def substep():
             pos[i] = min(max(1e-3, pos[i]), bg_n[i]-1-1e-3)#限制边界
         pos_down = ti.ceil(pos)#
         pos_up = ti.floor(pos)#
-        for i in ti.static(range(3)):
-            pos_check1 = pos_down
-            pos_check1[i] = ti.floor(pos[i])#ti.ceil(pos[i])#
-            direct_ud = (pos_check1 - pos_down).normalized()
-            field_check1 = field1[ti.cast(pos_check1, ti.i32)]
-            field_down = field1[ti.cast(pos_down, ti.i32)]
-            force += -(field_check1-field_down)*direct_ud*field_damping
+        # for i in ti.static(range(3)):
+        #     pos_check1 = pos_down
+        #     pos_check1[i] = ti.floor(pos[i])#ti.ceil(pos[i])#
+        #     direct_ud = (pos_check1 - pos_down).normalized()
+        #     field_check1 = field1[ti.cast(pos_check1, ti.i32)]
+        #     field_down = field1[ti.cast(pos_down, ti.i32)]
+        #     force += -(field_check1-field_down)*direct_ud*field_damping
             
+        #     pos_check2 = pos_up
+        #     pos_check2[i] = ti.ceil(pos[i])#
+        #     direct_ud = (pos_check2 - pos_up).normalized()
+        #     field_check2 = field1[ti.cast(pos_check2, ti.i32)]
+        #     field_up = field1[ti.cast(pos_up, ti.i32)]
+        #     force += -(field_check2-field_up)*direct_ud*field_damping
+        for i in ti.static(range(4)):
+            pos_check1 = pos_down
             pos_check2 = pos_up
-            pos_check2[i] = ti.ceil(pos[i])#
-            direct_ud = (pos_check2 - pos_up).normalized()
+            if i < 2:
+                pos_check1[i] = pos_up[i]
+                pos_check2[i] = pos_down[i]
+            elif i == 2:
+                pos_check1[0] = pos_up[0]
+                pos_check1[1] = pos_up[1]
+                pos_check2[0] = pos_down[0]
+                pos_check2[1] = pos_down[1]
+            direct_ud = (pos_check2 - pos_check1).normalized()
+            field_check1 = field1[ti.cast(pos_check1, ti.i32)]
             field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-            field_up = field1[ti.cast(pos_up, ti.i32)]
-            force += -(field_check2-field_up)*direct_ud*field_damping
+            force += -(field_check2-field_check1)*direct_ud*field_damping
         if pos[1] > bg_n[1]*0.5+0.5:
             force += ti.Vector([0.0, -0.5, 0.0])*field_damping
         elif pos[1] < bg_n[1]*0.5-0.5:
             force += ti.Vector([0.0, 0.5, 0.0])*field_damping
         else:
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping
+
         
         #v[n] += force * dt  # 更新速度
         v[n] = force * dt  # 更新速度
-        for i_c in ti.static(range(3)):
-            tmpValue = abs(v[n][i_c])
-            if tmpValue > 0.5:#限制最大速度
-                v[n][i_c] /= tmpValue * 2
+        if n[1] == 1:
+            print(n[0],force.norm(),v[n].norm())
 
+    ti.sync()
     for n in ti.grouped(x):
-        #v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
+        v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
         # # 碰撞检测
         # offset_to_center = x[n] - ball_center[0]
         # offset_to_center[1] = 0#当作圆柱处理
@@ -247,6 +262,7 @@ if __name__ == '__main__':  # 主函数
     #     bg_n_tmp += 1
     
     total_time = 1.0
+    n_step = 0
     while window.running:
         if current_t > total_time:
             # 重置
@@ -254,8 +270,9 @@ if __name__ == '__main__':  # 主函数
             current_t = 0
 
         for i in range(substeps):
-            substep()  # 执行子步
+            substep(n_step)  # 执行子步
             current_t += dt
+            n_step += 1
 
         if current_t < total_time*0.5:
             camera.position(0.0, 2.0, 0.0)  # 设置相机位置
