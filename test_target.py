@@ -192,22 +192,8 @@ def substep(n_step: int):
         for i in ti.static(range(3)):
             if abs(pos[i]-int(pos[i]))<1e-3: pos[i] += 1e-3#防止pos[i]为整数
             pos[i] = min(max(1e-3, pos[i]), bg_n[i]-1-1e-3)#限制边界
-        pos_down = ti.ceil(pos)#
-        pos_up = ti.floor(pos)#
-        # for i in ti.static(range(3)):
-        #     pos_check1 = pos_down
-        #     pos_check1[i] = ti.floor(pos[i])#ti.ceil(pos[i])#
-        #     direct_ud = (pos_check1 - pos_down).normalized()
-        #     field_check1 = field1[ti.cast(pos_check1, ti.i32)]
-        #     field_down = field1[ti.cast(pos_down, ti.i32)]
-        #     force += -(field_check1-field_down)*direct_ud*field_damping
-            
-        #     pos_check2 = pos_up
-        #     pos_check2[i] = ti.ceil(pos[i])#
-        #     direct_ud = (pos_check2 - pos_up).normalized()
-        #     field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-        #     field_up = field1[ti.cast(pos_up, ti.i32)]
-        #     force += -(field_check2-field_up)*direct_ud*field_damping
+        pos_down = ti.ceil(pos)
+        pos_up = ti.floor(pos)
         for i in ti.static(range(4)):
             pos_check1 = pos_down
             pos_check2 = pos_up
@@ -257,10 +243,12 @@ def substep(n_step: int):
                         v[n] += -direct_mn * 0.5
                     else:
                         v[n] += -direct_mn * 0.5
+
+    #更新位置
     ti.sync()
     for n in ti.grouped(x):
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
-            x[n] += dt * v[n]  # 更新位置
+            x[n] += dt * v[n]
 
 
 
@@ -276,21 +264,11 @@ if __name__ == '__main__':  # 主函数
 
     add_spring_offsets()
     initialize_mass_points()  # 初始化质点
-
-    current_t = 0.0
-    substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
-    first_half = ti.Vector.field(3, dtype=float, shape=n_x)
-
-    # bg_n_act = init_field_data()
-    # field1_index = ti.Vector.field(3, dtype=float, shape=bg_n_act) 
-    # transe_field_data(field1_index)
-    # bg_n_tmp=0   
-    # for i, j, k in pixel:
-    #     field1_index[bg_n_tmp] = [i*bg_quad_size, j*bg_quad_size, k*bg_quad_size]
-    #     bg_n_tmp += 1
-    
+   
     total_time = 1.0
+    current_t = 0.0
     n_step = 0
+    substeps = 10#int(1 / 60 // dt)  # 每帧的子步数
     while window.running:
         if current_t > total_time:
             # 重置
@@ -318,6 +296,7 @@ if __name__ == '__main__':  # 主函数
         # 绘制一个较小的球以避免视觉穿透
         #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
+        # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
         # for i in range(n_x):
         #     first_half[i] = x[i, 0]
         # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
