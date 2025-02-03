@@ -15,8 +15,8 @@ dt = 3e-4  # 时间步长
 
 spring_YP = 3e6  # 引力系数--长度相关
 spring_YN = 3e3  # 斥力系数--长度相关
-dashpot_damping = 1e0  # 阻尼系数--速度差相关
-drag_damping = 1e3  # 空气阻力系数
+dashpot_damping = 1e1  # 阻尼系数--速度差相关
+drag_damping = 1e4  # 空气阻力系数
 field_damping = 1e4
 
 x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
@@ -151,25 +151,40 @@ def substep(n_step: int):
     # for n in ti.grouped(x):
     #     v[n] += gravity * dt  # 施加重力
 
+    force_max_min = [0.0,1e10]
+    dist_max_min = [0.0,1e10]
+    force_max_min_index = [0, 0]
     for n in ti.grouped(x):#core
         force = ti.Vector([0.0, 0.0, 0.0])
         for spring_offset in ti.static(spring_offsets):
             m = n + spring_offset
-            if 0 <= m[0] < n_x and 0 <= m[1] < n_y:
+            if 0 <= m[0] < n_x and 0 <= m[1] < n_y:                
+                force_cur = ti.Vector([0.0, 0.0, 0.0])
                 bias_x = x[n] - x[m]
                 bias_v = v[n] - v[m]
                 direct_mn = bias_x.normalized()
-                current_dist = bias_x.norm() - (r[n] + r[m])*0.7
-                original_dist = spring_offset.norm() * (r[n] + r[m])*0.7 #tooth_size
+                current_dist = bias_x.norm() - (r[n] + r[m])*0.5
+                original_dist = spring_offset.norm() * (r[n] + r[m])*0.5 #tooth_size
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
-                    force += -spring_YP * direct_mn * (current_dist - original_dist)#**2
+                    force_cur += -spring_YP * direct_mn * (current_dist - original_dist)#**2
                 else:
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
-                    force += spring_YN * direct_mn * (original_dist - current_dist)#**0.5
+                    force_cur += spring_YN * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
                 #force += -dashpot_damping * direct_mn * bias_v.dot(direct_mn) * (r[n] + r[m])#tooth_size
+                force += force_cur
+                if spring_offset[0] != 0:
+                    force_value = force_cur.norm()
+                    if force_value > force_max_min[0]:
+                        force_max_min[0] = force_value
+                        force_max_min_index[0] = n[0]
+                        dist_max_min[0] = current_dist - original_dist
+                    if force_value < force_max_min[1]:
+                        force_max_min[1] = force_value
+                        force_max_min_index[1] = n[0]
+                        dist_max_min[1] = current_dist - original_dist
         # 场力
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
@@ -217,13 +232,9 @@ def substep(n_step: int):
 
         
         #v[n] += force * dt  # 更新速度
-        v[n] = force * dt  # 更新速度
-        if n[1] == 1:
-            print(n[0],force.norm(),v[n].norm())
-
-    ti.sync()
-    for n in ti.grouped(x):
+        v[n] = force * dt# 更新速度
         v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
+        #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
         # # 碰撞检测
         # offset_to_center = x[n] - ball_center[0]
         # offset_to_center[1] = 0#当作圆柱处理
@@ -231,6 +242,23 @@ def substep(n_step: int):
         # if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
         #         normal = offset_to_center.normalized()# 速度投影
         #         v[n] -= min(v[n].dot(normal), 0) * normal
+
+    # 添加全局约束
+    ti.sync()   
+    print((force_max_min[0]-force_max_min[1]) * dt, dist_max_min, force_max_min_index)
+    for n in ti.grouped(x):
+        if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
+            if n[0]!=0 and n[0]!=n_x-1:#固定两端 
+                if (n[0] -force_max_min_index[0]) * (n[0] -force_max_min_index[1]) < 0:
+                    index_bias = [1,0] if force_max_min_index[0] > force_max_min_index[1] else [-1,0]
+                    m = n+index_bias
+                    direct_mn = (x[n]-x[m]).normalized()
+                    if dist_max_min[0] > 0:
+                        v[n] += -direct_mn * 0.5
+                    else:
+                        v[n] += -direct_mn * 0.5
+    ti.sync()
+    for n in ti.grouped(x):
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             x[n] += dt * v[n]  # 更新位置
 
