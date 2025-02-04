@@ -45,13 +45,13 @@ r_level1 = 1.1 #网格数，+1.1>1.0防止数值误差
 
 block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
 block2 = block1.pointer(ti.ijk, (8, 4, 8))
-pixel = block2.bitmasked(ti.ijk, (8, 4, 8))
+voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
 
 field1 = ti.field(ti.f32)
 field2 = ti.field(ti.f32)
-pixel.place(field1, field2)
+voxels.place(field1, field2)
 
-bg_n = ti.Vector(pixel.shape)
+bg_n = ti.Vector(voxels.shape)
 bg_size_x = ellipse_long * 2 * 1.2
 bg_quad_size = bg_size_x / bg_n[0]
 bg_size_y = bg_quad_size * bg_n[1]
@@ -101,7 +101,7 @@ def transe_field_data():
     #for i, j, k in pixel:#无法串行化
     for i, j, k in ti.ndrange(bg_n[0], bg_n[1], bg_n[2]):
         if j == ti.ceil(bg_n[1]/2) and k > bg_n[2]/2-0.5:#只绘制上半部分
-            if ti.is_active(pixel, [i,j,k]): 
+            if ti.is_active(voxels, [i,j,k]): 
                 field1_index[bg_n_tmp] = [i*bg_quad_size-bg_size_x*0.5,
                                             j*bg_quad_size-bg_size_y*0.5,
                                             k*bg_quad_size-bg_size_z*0.5]
@@ -313,6 +313,13 @@ if __name__ == '__main__':  # 主函数
         # for i in range(n_x):
         #     first_half[i] = x[i, 0]
         # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+        for i in range(4):
+            point[0] = [0.0, 0.0, 0.0]
+            color = [0.0, 0.0, 0.0]
+            if i < 3:
+                point[0][i] = 0.05
+                color[i] = 1.0
+            scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
         for i in range(n_x):
             point[0] = x[i, 1, n_step]
             scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
