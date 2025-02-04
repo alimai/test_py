@@ -13,11 +13,11 @@ n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小
 dt = 3e-4  # 时间步长
 
-spring_YP = 3e6  # 引力系数--长度相关
-spring_YN = 3e3  # 斥力系数--长度相关
-dashpot_damping = 1e1  # 阻尼系数--速度差相关
-drag_damping = 1e4  # 空气阻力系数
-field_damping = 1e4
+spring_YP_base2 = 3e6  # 引力系数--长度相关
+spring_YN_base2 = 3e3  # 斥力系数--长度相关
+dashpot_damping_base2 = 1e1  # 阻尼系数--速度差相关
+drag_damping_base2 = 1e4  # 空气阻力系数
+field_damping_base2 = 1e4
 
 bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets = [] #弹簧偏移量---算子计算范围
@@ -29,15 +29,25 @@ r = ti.field(ti.f32, shape=(n_x, n_y))  # 质点半径
 #分层数据结构
 scalar = lambda: ti.field(dtype=ti.f32)  # 标量字段，用于place放入taichi分层数据中
 vec = lambda: ti.Vector.field(3, dtype=ti.f32)  # 向量字段，用于place放入taichi分层数据中
-x = vec()
-v = vec()
 
 max_steps = 1024
 lay1 = ti.root.dense(ti.k, max_steps)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
+x = vec()
+v = vec()
 lay2.place(x, v)
 
+loss = scalar()
+spring_YP= scalar()  # 引力系数--长度相关
+spring_YN = scalar()  # 斥力系数--长度相关
+dashpot_damping = scalar()  # 阻尼系数--速度差相关
+drag_damping = scalar()  # 空气阻力系数
+field_damping = scalar()
+ti.root.place(loss, spring_YP, spring_YN, dashpot_damping, drag_damping, field_damping)
+ti.root.lazy_grad()
 
+alpha = 0.00000  # 学习率衰减
+learning_rate = 0.01  # 学习率
 
 #场量
 r_level0 = 0.75 #网格数
@@ -189,12 +199,12 @@ def substep(t: ti.i32):
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
-                    force_cur += -spring_YP * direct_mn * (current_dist - original_dist)#**2
+                    force_cur += -spring_YP[None] * direct_mn * (current_dist - original_dist)#**2
                 else:
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
-                    force_cur += spring_YN * direct_mn * (original_dist - current_dist)#**0.5
+                    force_cur += spring_YN[None] * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
-                #force_cur += -dashpot_damping * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
+                #force_cur += -dashpot_damping[None] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
                 if spring_offset[0] != 0:
                     force_value = force_cur.norm()
@@ -229,17 +239,17 @@ def substep(t: ti.i32):
             direct_ud = (pos_check2 - pos_check1).normalized()
             field_check1 = field1[ti.cast(pos_check1, ti.i32)]
             field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-            force += -(field_check2-field_check1)*direct_ud*field_damping
+            force += -(field_check2-field_check1)*direct_ud*field_damping[None]
         if pos[1] > bg_n[1]*0.5+0.5:
-            force += ti.Vector([0.0, -0.5, 0.0])*field_damping
+            force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
         elif pos[1] < bg_n[1]*0.5-0.5:
-            force += ti.Vector([0.0, 0.5, 0.0])*field_damping
+            force += ti.Vector([0.0, 0.5, 0.0])*field_damping[None]
         else:
-            force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping
+            force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
         
         v[n] = force * dt# 更新速度
-        v[n] *= ti.exp(-drag_damping * dt)  # 施加空气阻力
+        v[n] *= ti.exp(-drag_damping[None] * dt)  # 施加空气阻力
         #v[n] += force * dt  # 更新速度
         #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
         # # 碰撞检测
@@ -274,7 +284,26 @@ def substep(t: ti.i32):
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             x[n] += dt * v[n]
 
-
+@ti.kernel
+def compute_loss(t: ti.i32):
+    list_dist = ti.vector(ti.f32, shape=(n_x-1,) )
+    total_dist = 0
+    j = n_y/2 
+    for i in ti.ndrange(n_x):
+        if i > 0:
+            list_dist[i-1] = (x[i, j, t] - x[i-1, j, t]).norm() - (r[i,j]+r[i-1,j])
+            total_dist += list_dist[i-1]
+    total_dist /= n_x-1
+    for i in ti.ndrange(n_x):
+        if i > 0:
+            loss[None] += (list_dist[i-1] - total_dist)**2
+            if i < n_x-1:
+            # 场力
+                pos=ti.Vector([(x[i,j,t][0]+bg_size_x*0.5)/bg_quad_size, 
+                        (x[i,j,t][1]+bg_size_y*0.5)/bg_quad_size,
+                        (x[i,j,t][2]+bg_size_z*0.5)/bg_quad_size])
+                pos = ti.round(pos)
+                loss[None] += field1[pos]
 
 if __name__ == '__main__':  # 主函数
     window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
@@ -288,56 +317,61 @@ if __name__ == '__main__':  # 主函数
     transe_field_data() # for display 
     point = ti.Vector.field(3, dtype=float, shape=1) # for display 
    
-    n_step = 0
-    substeps = 5#int(1 / 60 // dt)  # 每帧的子步数
-    initialize_mass_points(n_step)
+    spring_YP[None]= spring_YP_base2  # 引力系数--长度相关
+    spring_YN[None] = spring_YN_base2  # 斥力系数--长度相关
+    dashpot_damping[None] = dashpot_damping_base2  # 阻尼系数--速度差相关
+    drag_damping[None] = drag_damping_base2  # 空气阻力系数
+    field_damping[None] = field_damping_base2
     while window.running:
-        #display
-        if n_step < max_steps*0.5:
-            camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-        else:
-            camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*5),
-                            2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*5),
-                            0.0)  # 设置相机位置
-        camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
-        camera.up(0, 0, 1)
-        scene.set_camera(camera)
+        #with ti.ad.Tape(loss):  # 使用自动微分
+            n_step = 0
+            initialize_mass_points(0)
+            for n in range(max_steps-1):      
+                if not window.running:
+                    break    
 
-        scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
-        scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
-        #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
-        # 绘制一个较小的球以避免视觉穿透
-        #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
+                if n_step % 5 == 0:#display
+                    if n_step < max_steps*0.5:
+                        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+                    else:
+                        camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*5),
+                                        2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*5),
+                                        0.0)  # 设置相机位置
+                    camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
+                    camera.up(0, 0, 1)
+                    scene.set_camera(camera)
 
-        # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
-        # for i in range(n_x):
-        #     first_half[i] = x[i, 0]
-        # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
-        for i in range(4):
-            point[0] = [0.0, 0.0, 0.0]
-            color = [0.0, 0.0, 0.0]
-            if i < 3:
-                point[0][i] = 0.05
-                color[i] = 1.0
-            scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
-        for i in range(n_x):
-            point[0] = x[i, 1, n_step]
-            scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+                    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
+                    scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
+                    #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
+                    # 绘制一个较小的球以避免视觉穿透
+                    #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
-        scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
+                    # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
+                    # for i in range(n_x):
+                    #     first_half[i] = x[i, 0]
+                    # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+                    for i in range(4):
+                        point[0] = [0.0, 0.0, 0.0]
+                        color = [0.0, 0.0, 0.0]
+                        if i < 3:
+                            point[0][i] = 0.05
+                            color[i] = 1.0
+                        scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
+                    for i in range(n_x):
+                        point[0] = x[i, 1, n_step]
+                        scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
 
-        canvas.scene(scene)
-        window.show()
-        
+                    scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
-        for i in range(substeps):
-            if n_step >= max_steps:# 重置
-                n_step = 0
-                initialize_mass_points(n_step)
-            n_step += 1
-            init_points_t(n_step)
-            ti.sync()
-            substep(n_step)  # 执行子步
+                    canvas.scene(scene)
+                    window.show()
+            
+                n_step += 1
+                init_points_t(n_step)
+                substep(n_step)  # 执行子步
+            if window.running: 
+                compute_loss(n_step)
 
 # TODO: 增加自碰撞处理
 # TODO: 可用自动微分优化牙弓/弹簧参数(类似强化学习？)
