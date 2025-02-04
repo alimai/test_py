@@ -12,11 +12,11 @@ n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小
 
-spring_YP_base2 = 3e6  # 引力系数--长度相关
-spring_YN_base2 = 3e3  # 斥力系数--长度相关
-dashpot_damping_base2 = 1e1  # 阻尼系数--速度差相关
-drag_damping_base2 = 1e4  # 空气阻力系数
-field_damping_base2 = 1e4
+spring_YP_base = 3e6  # 引力系数--长度相关
+spring_YN_base = 3e3  # 斥力系数--长度相关
+dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
+drag_damping_base = 1e4  # 空气阻力系数
+field_damping_base = 1e4
 
 bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets = [] #弹簧偏移量---算子计算范围
@@ -29,7 +29,7 @@ r = ti.field(ti.f32, shape=(n_x, n_y))  # 质点半径
 scalar = lambda: ti.field(dtype=ti.f32)  # 标量字段，用于place放入taichi分层数据中
 vec = lambda: ti.Vector.field(3, dtype=ti.f32)  # 向量字段，用于place放入taichi分层数据中
 
-max_steps = 256#1024
+max_steps = 512#1024
 lay1 = ti.root.dense(ti.k, max_steps)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
 x = vec()
@@ -46,8 +46,8 @@ ti.root.place(loss, spring_YP, spring_YN, dashpot_damping, drag_damping, field_d
 ti.root.lazy_grad()
 
 dt = 3e-4  # 时间步长
-alpha = 0.00000  # 学习率衰减
-learning_rate = 0.01  # 学习率
+alpha = 0.001  # 学习率衰减
+learning_rate = 0.0001  # 学习率
 
 #场量
 r_level0 = 0.75 #网格数
@@ -329,7 +329,6 @@ def compute_loss(t):
     calculate_list_dist(t,j,total_dist,list_dist)
     total_dist[None] /= n_x-1
     calcute_loss_x(t,j,total_dist,list_dist)
-    print(total_dist[None])
 
 
 if __name__ == '__main__':  # 主函数
@@ -344,11 +343,11 @@ if __name__ == '__main__':  # 主函数
     transe_field_data() # for display 
     point = ti.Vector.field(3, dtype=float, shape=1) # for display 
    
-    spring_YP[None]= spring_YP_base2  # 引力系数--长度相关
-    spring_YN[None] = spring_YN_base2  # 斥力系数--长度相关
-    dashpot_damping[None] = dashpot_damping_base2  # 阻尼系数--速度差相关
-    drag_damping[None] = drag_damping_base2  # 空气阻力系数
-    field_damping[None] = field_damping_base2
+    spring_YP[None]= spring_YP_base  # 引力系数--长度相关
+    spring_YN[None] = spring_YN_base  # 斥力系数--长度相关
+    dashpot_damping[None] = dashpot_damping_base  # 阻尼系数--速度差相关
+    drag_damping[None] = drag_damping_base  # 空气阻力系数
+    field_damping[None] = field_damping_base
     iter = 0
     while window.running:
         iter += 1
@@ -359,42 +358,42 @@ if __name__ == '__main__':  # 主函数
                 if not window.running:
                     break    
 
-                # if n_step % 5 == 0:#display
-                #     if n_step < max_steps*0.5:
-                #         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-                #     else:
-                #         camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*5),
-                #                         2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*5),
-                #                         0.0)  # 设置相机位置
-                #     camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
-                #     camera.up(0, 0, 1)
-                #     scene.set_camera(camera)
+                if n_step % 10 == 0:#display
+                    if n_step < max_steps*0.5:
+                        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+                    else:
+                        camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                                        2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                                        0.0)  # 设置相机位置
+                    camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
+                    camera.up(0, 0, 1)
+                    scene.set_camera(camera)
 
-                #     scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
-                #     scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
-                #     #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
-                #     # 绘制一个较小的球以避免视觉穿透
-                #     #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
+                    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
+                    scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
+                    #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
+                    # 绘制一个较小的球以避免视觉穿透
+                    #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
-                #     # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
-                #     # for i in range(n_x):
-                #     #     first_half[i] = x[i, 0]
-                #     # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
-                #     for i in range(4):
-                #         point[0] = [0.0, 0.0, 0.0]
-                #         color = [0.0, 0.0, 0.0]
-                #         if i < 3:
-                #             point[0][i] = 0.05
-                #             color[i] = 1.0
-                #         scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
-                #     for i in range(n_x):
-                #         point[0] = x[i, 1, n_step]
-                #         scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+                    # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
+                    # for i in range(n_x):
+                    #     first_half[i] = x[i, 0]
+                    # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+                    for i in range(4):
+                        point[0] = [0.0, 0.0, 0.0]
+                        color = [0.0, 0.0, 0.0]
+                        if i < 3:
+                            point[0][i] = 0.05
+                            color[i] = 1.0
+                        scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
+                    for i in range(n_x):
+                        point[0] = x[i, 1, n_step]
+                        scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
 
-                #     scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
+                    scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
-                #     canvas.scene(scene)
-                #     window.show()
+                    canvas.scene(scene)
+                    window.show()
             
                 n_step += 1
                 init_points_t(n_step)
