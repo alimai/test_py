@@ -1,7 +1,8 @@
 import numpy as np
 import time
 import taichi as ti
-ti.init(arch=ti.cpu,random_seed=int(time.time()))  # 初始化Taichi，使用CPU架构
+import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
+ti.init(arch=ti.cpu,random_seed=0)#int(time.time()))  # 初始化Taichi，使用CPU架构
 
 ellipse_long = 0.6  # mm,椭圆的长轴
 ellipse_short = 0.35  # mm,椭圆的短轴
@@ -34,20 +35,21 @@ lay1 = ti.root.dense(ti.k, max_steps)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
 x = vec()
 v = vec()
-lay2.place(x, v)
+f_field = vec()
+lay2.place(x, v, f_field)
 
 loss = scalar()
 spring_YP= scalar()  # 引力系数--长度相关
 spring_YN = scalar()  # 斥力系数--长度相关
 dashpot_damping = scalar()  # 阻尼系数--速度差相关
 drag_damping = scalar()  # 空气阻力系数
-field_damping = scalar()
-ti.root.place(loss, spring_YP, spring_YN, dashpot_damping, drag_damping, field_damping)
+field_damping = ti.field(ti.f32, shape=())#scalar()
+ti.root.place(loss, spring_YP, spring_YN, dashpot_damping, drag_damping)#, field_damping)
 ti.root.lazy_grad()
 
 dt = 3e-4  # 时间步长
-alpha = 0.001  # 学习率衰减
-learning_rate = 0.0001  # 学习率
+alpha = 0.01  # 学习率衰减
+learning_rate = 1.0  # 学习率
 
 #场量
 r_level0 = 0.75 #网格数
@@ -220,6 +222,7 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
+        f_field[n] = ti.Vector([0.0, 0.0, 0.0])
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
                        (x[n][2]+bg_size_z*0.5)/bg_quad_size])
@@ -242,13 +245,14 @@ def cal_force_and_update_xv(t: ti.i32):
             direct_ud = (pos_check2 - pos_check1).normalized()
             field_check1 = field1[ti.cast(pos_check1, ti.i32)]
             field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-            force += -(field_check2-field_check1)*direct_ud*field_damping[None]
+            f_field[n] += -(field_check2-field_check1)*direct_ud*field_damping[None]
         if pos[1] > bg_n[1]*0.5+0.5:
-            force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
+            f_field[n] += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
         elif pos[1] < bg_n[1]*0.5-0.5:
-            force += ti.Vector([0.0, 0.5, 0.0])*field_damping[None]
+            f_field[n] += ti.Vector([0.0, 0.5, 0.0])*field_damping[None]
         else:
-            force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
+            f_field[n] += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
+        force += f_field[n]
 
         
         v[n] = force * dt# 更新速度
@@ -297,38 +301,24 @@ def substep(t):
     #     print((force_max_min[0]-force_max_min[1]) * dt, dist_max_min, force_max_min_index)
 
 @ti.kernel
-def calcute_loss_field(t: ti.i32, j: ti.i32):
+def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        if i > 0 and i < n_x-1:
-            pos=ti.Vector([(x[i,j,t][0]+bg_size_x*0.5)/bg_quad_size, 
-                    (x[i,j,t][1]+bg_size_y*0.5)/bg_quad_size,
-                    (x[i,j,t][2]+bg_size_z*0.5)/bg_quad_size])
-            #pos_int = ti.round(pos).cast(int)
-            pos_int = ti.Vector.zero(ti.i32, 3)
-            for k in ti.static(range(3)):
-                pos_int[k] = ti.i32(pos[k])
-            loss[None] += field1[pos_int]*bg_quad_size
+        loss[None] += f_field[i,j,t].norm()
 @ti.kernel
-def calculate_list_dist(t: ti.i32, j: ti.i32, total_dist: ti.template(), list_dist: ti.template()):      
-    for i in ti.ndrange(n_x):
-        if i > 0:
-            list_dist[i-1] = (x[i, j, t] - x[i-1, j, t]).norm() - (r[i,j]+r[i-1,j])
-            total_dist[None] += list_dist[i-1]
-@ti.kernel
-def calcute_loss_x(t: ti.i32, j: ti.i32, total_dist: ti.template(), list_dist: ti.template()):
-    for i in list_dist:
-        loss[None] += abs(list_dist[i]-total_dist[None])
+def calcute_loss_dist(t: ti.i32, j: ti.i32):    
+    list_dist = ti.Vector([0.0] * (n_x-1))
+    total_dist = 0.0    
+    for i in ti.static(range(n_x-1)):
+        list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
+        total_dist += list_dist[i]
+    total_dist /= (n_x-1)
+    for i in ti.static(range(n_x-1)):
+        loss[None] += abs(list_dist[i]-total_dist)
 
 def compute_loss(t):
     j = n_y//2
-    calcute_loss_field(t,j)
-    
-    list_dist = ti.field(ti.f32, shape=n_x-1)
-    total_dist = ti.field(ti.f32,shape=())
-    total_dist[None] = 0.0#ti.cast(0.0, ti.f32)
-    calculate_list_dist(t,j,total_dist,list_dist)
-    total_dist[None] /= n_x-1
-    calcute_loss_x(t,j,total_dist,list_dist)
+    calcute_loss_x(t,j)    
+    calcute_loss_dist(t,j)#,total_dist,list_dist)
 
 
 if __name__ == '__main__':  # 主函数
@@ -349,7 +339,8 @@ if __name__ == '__main__':  # 主函数
     drag_damping[None] = drag_damping_base  # 空气阻力系数
     field_damping[None] = field_damping_base
     iter = 0
-    while window.running:
+    losses = []  # 损失列表
+    for nnn in range(10):#while window.running:
         iter += 1
         n_step = 0
         initialize_mass_points(0)
@@ -401,14 +392,19 @@ if __name__ == '__main__':  # 主函数
             if window.running: 
                 compute_loss(n_step)
                 print('Iter=', iter, 'Loss=', loss[None])
+                losses.append(loss[None])  # 添加损失到列表
                 
         spring_YP[None] -= learning_rate * spring_YP.grad[None]
         spring_YN[None] -= learning_rate * spring_YN.grad[None]
         dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None]
         drag_damping[None] -= learning_rate * drag_damping.grad[None]
-        field_damping[None] -= learning_rate * field_damping.grad[None]
         learning_rate *= (1.0 - alpha)
+        print(spring_YP.grad[None], spring_YN.grad[None], dashpot_damping.grad[None],\
+               drag_damping.grad[None])
 
+    plt.plot(losses)  # 绘制损失曲线
+    plt.tight_layout()  # 紧凑布局
+    plt.show()  # 显示图像
 
 
 # TODO: 增加自碰撞处理
