@@ -13,7 +13,7 @@ n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小
 
-spring_YP_base = 5e6  #3e6 # 引力系数--长度相关
+spring_YP_base = 2e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
 drag_damping_base = 1e4  # 空气阻力系数
@@ -342,9 +342,11 @@ if __name__ == '__main__':  # 主函数
     dashpot_damping[None] = dashpot_damping_base  # 阻尼系数--速度差相关
     drag_damping[None] = drag_damping_base  # 空气阻力系数
     field_damping[None] = field_damping_base
-    iter = 0
+    
+    spring_YPs=[]
     losses = []  # 损失列表
     max_iter = 100
+    iter = 0
     for nnn in range(max_iter):#while window.running:
         iter += 1
         n_step = 0
@@ -398,20 +400,23 @@ if __name__ == '__main__':  # 主函数
                 compute_loss(n_step)
                 print('Iter=', iter, 'Loss=', loss[None])
                 losses.append(loss[None])  # 添加损失到列表
+                spring_YPs.append(spring_YP[None])
                 
-        adj_ratio = loss[None]/(abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
-                                abs(dashpot_damping.grad[None])+1e-5)*1e-2#+abs(drag_damping.grad[None])
-        spring_YP[None] -= learning_rate * spring_YP.grad[None] * adj_ratio
-        spring_YN[None] -= learning_rate * spring_YN.grad[None] * adj_ratio
-        dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * adj_ratio
-        #drag_damping[None] -= learning_rate * drag_damping.grad[None] * adj_ratio
+        adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
+                                abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
+        spring_YP[None] -= learning_rate * spring_YP.grad[None] * spring_YP[None]*adj_ratio
+        spring_YN[None] -= learning_rate * spring_YN.grad[None] * spring_YN[None]*adj_ratio
+        dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * dashpot_damping[None]*adj_ratio
+        #drag_damping[None] -= learning_rate * drag_damping.grad[None] * drag_damping[None]*adj_ratio
         learning_rate *= (1.0 - alpha)
+        print(adj_ratio)
         print(spring_YP.grad[None], spring_YN.grad[None], dashpot_damping.grad[None],\
                drag_damping.grad[None])
         print(spring_YP[None], spring_YN[None], dashpot_damping[None], drag_damping[None])
         
-    print(spring_YP[None], spring_YN[None], dashpot_damping[None], drag_damping[None])
-    plt.plot(losses)  # 绘制损失曲线
+    fig,axs = plt.subplots(2)
+    axs[0].plot(losses)  # 绘制损失曲线
+    axs[1].plot(spring_YPs)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
 
