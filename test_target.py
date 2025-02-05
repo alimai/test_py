@@ -13,7 +13,7 @@ n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小
 
-spring_YP_base = 3e6  # 引力系数--长度相关
+spring_YP_base = 5e6  #3e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
 drag_damping_base = 1e4  # 空气阻力系数
@@ -35,8 +35,8 @@ lay1 = ti.root.dense(ti.k, max_steps)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
 x = vec()
 v = vec()
-f_field = vec()
-lay2.place(x, v, f_field)
+l = vec()
+lay2.place(x, v, l)
 
 loss = scalar()
 spring_YP= scalar()  # 引力系数--长度相关
@@ -222,7 +222,7 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
-        f_field[n] = ti.Vector([0.0, 0.0, 0.0])
+        l[n] = ti.Vector([0.0, 0.0, 0.0])
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
                        (x[n][2]+bg_size_z*0.5)/bg_quad_size])
@@ -245,14 +245,14 @@ def cal_force_and_update_xv(t: ti.i32):
             direct_ud = (pos_check2 - pos_check1).normalized()
             field_check1 = field1[ti.cast(pos_check1, ti.i32)]
             field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-            f_field[n] += -(field_check2-field_check1)*direct_ud*field_damping[None]
+            l[n] += (field_check2+field_check1) * 0.5
+            force += -(field_check2-field_check1)*direct_ud*field_damping[None]
         if pos[1] > bg_n[1]*0.5+0.5:
-            f_field[n] += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
+            force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
         elif pos[1] < bg_n[1]*0.5-0.5:
-            f_field[n] += ti.Vector([0.0, 0.5, 0.0])*field_damping[None]
+            force += ti.Vector([0.0, 0.5, 0.0])*field_damping[None]
         else:
-            f_field[n] += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
-        force += f_field[n]
+            force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
         
         v[n] = force * dt# 更新速度
@@ -303,17 +303,21 @@ def substep(t):
 @ti.kernel
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss[None] += f_field[i,j,t].norm()
+        loss[None] += l[i,j,t].norm()
 @ti.kernel
 def calcute_loss_dist(t: ti.i32, j: ti.i32):    
     list_dist = ti.Vector([0.0] * (n_x-1))
-    total_dist = 0.0    
+    total_length = 0.0
+    avg_bias = 0.0    
     for i in ti.static(range(n_x-1)):
         list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
-        total_dist += list_dist[i]
-    total_dist /= (n_x-1)
+        total_length += (x[i, j, t] - x[i+1, j, t]).norm()
+        avg_bias += list_dist[i]
+    avg_bias /= (n_x-1)
+    #与椭圆半周长偏差
+    loss[None] += abs(total_length - np.pi*((ellipse_long**2+ellipse_short**2)*0.5)**0.5)*1e4
     for i in ti.static(range(n_x-1)):
-        loss[None] += abs(list_dist[i]-total_dist)
+        loss[None] += abs(list_dist[i]-avg_bias)*1e4
 
 def compute_loss(t):
     j = n_y//2
@@ -340,7 +344,8 @@ if __name__ == '__main__':  # 主函数
     field_damping[None] = field_damping_base
     iter = 0
     losses = []  # 损失列表
-    for nnn in range(10):#while window.running:
+    max_iter = 100
+    for nnn in range(max_iter):#while window.running:
         iter += 1
         n_step = 0
         initialize_mass_points(0)
@@ -349,7 +354,7 @@ if __name__ == '__main__':  # 主函数
                 if not window.running:
                     break    
 
-                if n_step % 10 == 0:#display
+                if n_step % max_iter == 0:#display
                     if n_step < max_steps*0.5:
                         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
                     else:
@@ -394,14 +399,18 @@ if __name__ == '__main__':  # 主函数
                 print('Iter=', iter, 'Loss=', loss[None])
                 losses.append(loss[None])  # 添加损失到列表
                 
-        spring_YP[None] -= learning_rate * spring_YP.grad[None]
-        spring_YN[None] -= learning_rate * spring_YN.grad[None]
-        dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None]
-        drag_damping[None] -= learning_rate * drag_damping.grad[None]
+        adj_ratio = loss[None]/(abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
+                                abs(dashpot_damping.grad[None])+1e-5)*1e-2#+abs(drag_damping.grad[None])
+        spring_YP[None] -= learning_rate * spring_YP.grad[None] * adj_ratio
+        spring_YN[None] -= learning_rate * spring_YN.grad[None] * adj_ratio
+        dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * adj_ratio
+        #drag_damping[None] -= learning_rate * drag_damping.grad[None] * adj_ratio
         learning_rate *= (1.0 - alpha)
         print(spring_YP.grad[None], spring_YN.grad[None], dashpot_damping.grad[None],\
                drag_damping.grad[None])
-
+        print(spring_YP[None], spring_YN[None], dashpot_damping[None], drag_damping[None])
+        
+    print(spring_YP[None], spring_YN[None], dashpot_damping[None], drag_damping[None])
     plt.plot(losses)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
