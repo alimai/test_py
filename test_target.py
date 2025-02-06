@@ -2,7 +2,7 @@ import numpy as np
 import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
-ti.init(arch=ti.cpu,random_seed=0)#int(time.time()))  # 初始化Taichi，使用CPU架构
+ti.init(arch=ti.cpu,random_seed=int(time.time()))#0)#  # 初始化Taichi，使用CPU架构
 
 ellipse_long = 0.6  # mm,椭圆的长轴
 ellipse_short = 0.35  # mm,椭圆的短轴
@@ -48,7 +48,7 @@ ti.root.place(loss, spring_YP, spring_YN, dashpot_damping, drag_damping)#, field
 ti.root.lazy_grad()
 
 dt = 3e-4  # 时间步长
-alpha = 0.01  # 学习率衰减
+alpha = 1e-8  # 学习率衰减
 learning_rate = 1.0  # 学习率
 
 #场量
