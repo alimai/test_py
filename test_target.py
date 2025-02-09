@@ -134,14 +134,30 @@ def add_field_offsets():
 
 
 
-
+def output_spring_para():
+    s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy(), drag_damping.to_numpy()])
+    np.save('spring_para.npy', s_para)
+def load_spring_para():
+    try:
+        s_para = np.load('spring_para.npy')
+    except FileNotFoundError:
+        return False
+    if(len(s_para) > 0):
+        spring_YP.from_numpy(s_para[0])
+        spring_YN.from_numpy(s_para[1])
+        dashpot_damping.from_numpy(s_para[2])
+        drag_damping.from_numpy(s_para[3])
+        return True
+    else:
+        return False
 @ti.kernel
 def initialize_spring_para():
     for i, j, t in x:
         spring_YP[i,j, t]= spring_YP_base  
         spring_YN[i,j, t] = spring_YN_base  
         dashpot_damping[i,j, t] = dashpot_damping_base  
-        drag_damping[i,j, t] = drag_damping_base  
+        drag_damping[i,j, t] = drag_damping_base 
+
 @ti.kernel
 def update_spring_para():
     sum_grad = 0.0
@@ -360,19 +376,26 @@ if __name__ == '__main__':  # 主函数
     camera = ti.ui.make_camera()
     
     add_field_offsets()
-    add_spring_offsets()
-    initialize_spring_para()
+    add_spring_offsets()    
+    field_damping[None] = field_damping_base
+    if not load_spring_para():
+        initialize_spring_para()
+    print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
+            dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
+    print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
+            dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
+    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
+            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
+
+
     transe_field_data() # for display 
     point = ti.Vector.field(3, dtype=float, shape=1) # for display 
    
-    field_damping[None] = field_damping_base
     
     spring_YPs=[]
     losses = []  # 损失列表
     max_iter = 2000
-    iter = 0
-    for nnn in range(max_iter):#while window.running:
-        iter += 1
+    for iter in range(max_iter):#while window.running:
         n_step = 0
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
@@ -380,42 +403,43 @@ if __name__ == '__main__':  # 主函数
                 if not window.running:
                     break    
 
-                if n_step+1 % max_iter == 0:#max_steps == 0:#display
-                    if n_step < max_steps*0.5:
-                        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-                    else:
-                        camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
-                                        2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
-                                        0.0)  # 设置相机位置
-                    camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
-                    camera.up(0, 0, 1)
-                    scene.set_camera(camera)
+                if iter % (max_iter-1) == 0: #display 
+                    if n_step % 10 == 0:#if n_step+1 % (max_steps-1) == 0:  
+                        if n_step < max_steps*0.5:
+                            camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+                        else:
+                            camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                                            2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                                            0.0)  # 设置相机位置
+                        camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
+                        camera.up(0, 0, 1)
+                        scene.set_camera(camera)
 
-                    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
-                    scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
-                    #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
-                    # 绘制一个较小的球以避免视觉穿透
-                    #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
+                        scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
+                        scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
+                        #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
+                        # 绘制一个较小的球以避免视觉穿透
+                        #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
-                    # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
-                    # for i in range(n_x):
-                    #     first_half[i] = x[i, 0]
-                    # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
-                    for i in range(4):
-                        point[0] = [0.0, 0.0, 0.0]
-                        color = [0.0, 0.0, 0.0]
-                        if i < 3:
-                            point[0][i] = 0.05
-                            color[i] = 1.0
-                        scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
-                    for i in range(n_x):
-                        point[0] = x[i, 1, n_step]
-                        scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+                        # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
+                        # for i in range(n_x):
+                        #     first_half[i] = x[i, 0]
+                        # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+                        for i in range(4):
+                            point[0] = [0.0, 0.0, 0.0]
+                            color = [0.0, 0.0, 0.0]
+                            if i < 3:
+                                point[0][i] = 0.05
+                                color[i] = 1.0
+                            scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
+                        for i in range(n_x):
+                            point[0] = x[i, 1, n_step]
+                            scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
 
-                    scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
+                        scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
-                    canvas.scene(scene)
-                    window.show()
+                        canvas.scene(scene)
+                        window.show()
             
                 n_step += 1
                 init_points_t(n_step)
@@ -448,6 +472,7 @@ if __name__ == '__main__':  # 主函数
         # print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
         #       dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
     
+    output_spring_para()
     spring_YPs_2=[]
     for t in range(max_steps-1):        
         spring_YPs_2.append(spring_YP[int(n_x/2),int(n_y/2),t+1])
