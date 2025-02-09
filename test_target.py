@@ -42,8 +42,9 @@ lay1 = ti.root.dense(ti.k, max_steps)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
 x = vec()
 v = vec()
+f = vec()
 l = vec() #location in field
-lay2.place(x, v, l, spring_YP, spring_YN, dashpot_damping, drag_damping)
+lay2.place(x, v, f, l, spring_YP, spring_YN, dashpot_damping, drag_damping)
 
 
 dt = 3e-4  # 时间步长
@@ -173,6 +174,20 @@ def update_spring_para():
         spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
         dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
         #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
+    
+    # for t in ti.ndrange(max_steps):        
+    #     sum_grad = 0.0
+    #     for i, j in ti.ndrange(n_x, n_y):
+    #         sum_grad += abs(spring_YP.grad[i,j, t])
+    #         sum_grad += abs(spring_YN.grad[i,j, t])
+    #         sum_grad += abs(dashpot_damping.grad[i,j, t])
+    #         sum_grad += abs(drag_damping.grad[i,j, t])
+    #     adj_ratio = 1 / (sum_grad+1e-5)
+    #     for i, j in ti.ndrange(n_x, n_y):
+    #         spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
+    #         spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
+    #         dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
+    #         #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
 
 @ti.kernel
 def initialize_mass_points(t: ti.i32):
@@ -205,6 +220,10 @@ def init_points_t(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):
         x[i,j,t] = x[i,j,t-1]
         v[i,j,t] = v[i,j,t-1]
+        # if i==int(n_x/2) and j==int(n_y/2):
+        #     print(t, f[10,j,t-1])
+        #     print(t, l[10,j,t-1])
+        #     print(t, v[10,j,t-1])
 
 def add_spring_offsets():
     if bending_springs:
@@ -265,6 +284,7 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
+        f[n] = force
         l[n] = ti.Vector([0.0, 0.0, 0.0])
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
@@ -297,7 +317,7 @@ def cal_force_and_update_xv(t: ti.i32):
         else:
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
-        
+        f[n] = force - f[n]
         v[n] = force * dt# 更新速度
         v[n] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
         #v[n] += force * dt  # 更新速度
@@ -331,12 +351,12 @@ def cal_force_and_update_xv(t: ti.i32):
         n = ti.Vector([i, j, t])
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             x[n] += dt * v[n]
-            #添加残差连接        
-            if t > 1 and t%20==1:
-                n_b = n
-                n_b[2] -= 21
-                x[n] += x[n_b] * 0.1
-                x[n] /= 1.1
+            # #添加残差连接        
+            # if t > 1 and t%20==1:
+            #     n_b = n
+            #     n_b[2] -= 21
+            #     x[n] += x[n_b] * 0.1
+            #     x[n] /= 1.1
 
 
 def substep(t):
@@ -353,7 +373,11 @@ def substep(t):
 @ti.kernel
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss[None] += l[i,j,t].norm()
+        loss[None] += l[i,j,t].norm()*1e2
+@ti.kernel
+def calcute_loss_v(t: ti.i32, j: ti.i32):
+    for i in ti.ndrange(n_x):
+        loss[None] += v[i,j,t].norm()
 @ti.kernel
 def calcute_loss_dist(t: ti.i32, j: ti.i32):    
     list_dist = ti.Vector([0.0] * (n_x-1))
@@ -370,9 +394,15 @@ def calcute_loss_dist(t: ti.i32, j: ti.i32):
         loss[None] += abs(list_dist[i]-avg_bias)*1e4
 
 def compute_loss(t):
+    loss[None] = 0.0
     j = n_y//2
-    calcute_loss_x(t,j)    
-    calcute_loss_dist(t,j)#,total_dist,list_dist)
+    print("0:",loss[None])
+    calcute_loss_x(t,j) 
+    print(loss[None])
+    calcute_loss_v(t,j)    
+    print(loss[None])
+    calcute_loss_dist(t,j)#,total_dist,list_dist) 
+    print(loss[None])
 
 
 if __name__ == '__main__':  # 主函数
@@ -406,7 +436,7 @@ if __name__ == '__main__':  # 主函数
         n_step = 0
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
-            for n in range(max_steps-1):      
+            for n in range(max_steps-1): # note: max_steps-1 here 
                 if not window.running:
                     break    
 
@@ -418,6 +448,7 @@ if __name__ == '__main__':  # 主函数
                             camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
                                             2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
                                             0.0)  # 设置相机位置
+                        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
                         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
                         camera.up(0, 0, 1)
                         scene.set_camera(camera)
