@@ -331,6 +331,13 @@ def cal_force_and_update_xv(t: ti.i32):
         n = ti.Vector([i, j, t])
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             x[n] += dt * v[n]
+            #添加残差连接        
+            if t > 1 and t%20==1:
+                n_b = n
+                n_b[2] -= 21
+                x[n] += x[n_b] * 0.1
+                x[n] /= 1.1
+
 
 def substep(t):
     force_max_min[0] = 0.0
@@ -394,7 +401,7 @@ if __name__ == '__main__':  # 主函数
     
     spring_YPs=[]
     losses = []  # 损失列表
-    max_iter = 2000
+    max_iter = 100
     for iter in range(max_iter):#while window.running:
         n_step = 0
         initialize_mass_points(0)
