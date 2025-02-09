@@ -30,22 +30,21 @@ r = ti.field(ti.f32, shape=(n_x, n_y))  # 质点半径
 scalar = lambda: ti.field(dtype=ti.f32)  # 标量字段，用于place放入taichi分层数据中
 vec = lambda: ti.Vector.field(3, dtype=ti.f32)  # 向量字段，用于place放入taichi分层数据中
 
-max_steps = 512#1024
-lay1 = ti.root.dense(ti.k, max_steps)
-lay2 = lay1.dense(ti.ij, (n_x, n_y))
-x = vec()
-v = vec()
-l = vec()
-lay2.place(x, v, l)
-
 loss = scalar()
 spring_YP= scalar()  # 引力系数--长度相关
 spring_YN = scalar()  # 斥力系数--长度相关
 dashpot_damping = scalar()  # 阻尼系数--速度差相关
 drag_damping = scalar()  # 空气阻力系数
 field_damping = ti.field(ti.f32, shape=())#scalar()
-ti.root.place(loss, spring_YP, spring_YN, dashpot_damping, drag_damping)#, field_damping)
-ti.root.lazy_grad()
+
+max_steps = 512#1024
+lay1 = ti.root.dense(ti.k, max_steps)
+lay2 = lay1.dense(ti.ij, (n_x, n_y))
+x = vec()
+v = vec()
+l = vec() #location in field
+lay2.place(x, v, l, spring_YP, spring_YN, dashpot_damping, drag_damping)
+
 
 dt = 3e-4  # 时间步长
 alpha = 1e-8  # 学习率衰减
@@ -61,7 +60,7 @@ voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
 
 field1 = ti.field(ti.f32)
 field2 = ti.field(ti.f32)
-voxels.place(field1, field2)
+voxels.place(field1, field2)#, field_damping)
 
 bg_n = ti.Vector(voxels.shape)
 bg_size_x = ellipse_long * 2 * 1.2
@@ -69,6 +68,11 @@ bg_quad_size = bg_size_x / bg_n[0]
 bg_size_y = bg_quad_size * bg_n[1]
 bg_size_z = bg_quad_size * bg_n[2]
 field_offset = []
+
+ti.root.place(loss)
+ti.root.lazy_grad()
+#lay1.lazy_grad()
+lay2.lazy_grad()
 
 @ti.kernel
 def init_field_data()->int:
@@ -130,6 +134,29 @@ def add_field_offsets():
 
 
 
+
+@ti.kernel
+def initialize_spring_para():
+    for i, j, t in x:
+        spring_YP[i,j, t]= spring_YP_base  
+        spring_YN[i,j, t] = spring_YN_base  
+        dashpot_damping[i,j, t] = dashpot_damping_base  
+        drag_damping[i,j, t] = drag_damping_base  
+@ti.kernel
+def update_spring_para():
+    sum_grad = 0.0
+    for i, j, t in x:
+        sum_grad += abs(spring_YP.grad[i,j, t])
+        sum_grad += abs(spring_YN.grad[i,j, t])
+        sum_grad += abs(dashpot_damping.grad[i,j, t])
+        sum_grad += abs(drag_damping.grad[i,j, t])
+    adj_ratio = max_steps / (sum_grad+1e-5)
+    print(adj_ratio)
+    for i, j, t in x:
+        spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
+        spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
+        dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
+        #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
 
 @ti.kernel
 def initialize_mass_points(t: ti.i32):
@@ -204,12 +231,12 @@ def cal_force_and_update_xv(t: ti.i32):
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
-                    force_cur += -spring_YP[None] * direct_mn * (current_dist - original_dist)#**2
+                    force_cur += -spring_YP[n] * direct_mn * (current_dist - original_dist)#**2
                 else:
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
-                    force_cur += spring_YN[None] * direct_mn * (original_dist - current_dist)#**0.5
+                    force_cur += spring_YN[n] * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
-                #force_cur += -dashpot_damping[None] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
+                #force_cur += -dashpot_damping[n] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
                 if spring_offset[0] != 0:
                     force_value = force_cur.norm()
@@ -256,7 +283,7 @@ def cal_force_and_update_xv(t: ti.i32):
 
         
         v[n] = force * dt# 更新速度
-        v[n] *= ti.exp(-drag_damping[None] * dt)  # 施加空气阻力
+        v[n] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
         #v[n] += force * dt  # 更新速度
         #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
         # # 碰撞检测
@@ -334,18 +361,15 @@ if __name__ == '__main__':  # 主函数
     
     add_field_offsets()
     add_spring_offsets()
+    initialize_spring_para()
     transe_field_data() # for display 
     point = ti.Vector.field(3, dtype=float, shape=1) # for display 
    
-    spring_YP[None]= spring_YP_base  # 引力系数--长度相关
-    spring_YN[None] = spring_YN_base  # 斥力系数--长度相关
-    dashpot_damping[None] = dashpot_damping_base  # 阻尼系数--速度差相关
-    drag_damping[None] = drag_damping_base  # 空气阻力系数
     field_damping[None] = field_damping_base
     
     spring_YPs=[]
     losses = []  # 损失列表
-    max_iter = 100
+    max_iter = 2000
     iter = 0
     for nnn in range(max_iter):#while window.running:
         iter += 1
@@ -356,7 +380,7 @@ if __name__ == '__main__':  # 主函数
                 if not window.running:
                     break    
 
-                if n_step % max_iter == 0:#display
+                if n_step+1 % max_iter == 0:#max_steps == 0:#display
                     if n_step < max_steps*0.5:
                         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
                     else:
@@ -400,30 +424,41 @@ if __name__ == '__main__':  # 主函数
                 compute_loss(n_step)
                 print('Iter=', iter, 'Loss=', loss[None])
                 losses.append(loss[None])  # 添加损失到列表
-                spring_YPs.append(spring_YP[None])
+                spring_YPs.append(spring_YP[int(n_x/2),int(n_y/2),max_steps-1])
                 
-        adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
-                                abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
-        spring_YP[None] -= learning_rate * spring_YP.grad[None] * spring_YP[None]*adj_ratio
-        spring_YN[None] -= learning_rate * spring_YN.grad[None] * spring_YN[None]*adj_ratio
-        dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * dashpot_damping[None]*adj_ratio
-        #drag_damping[None] -= learning_rate * drag_damping.grad[None] * drag_damping[None]*adj_ratio
+        # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
+        #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
+        # spring_YP[None] -= learning_rate * spring_YP.grad[None] * spring_YP[None]*adj_ratio
+        # spring_YN[None] -= learning_rate * spring_YN.grad[None] * spring_YN[None]*adj_ratio
+        # dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * dashpot_damping[None]*adj_ratio
+        # #drag_damping[None] -= learning_rate * drag_damping.grad[None] * drag_damping[None]*adj_ratio
+        # print(adj_ratio)
+        update_spring_para()
         learning_rate *= (1.0 - alpha)
-        print(adj_ratio)
-        print(spring_YP.grad[None], spring_YN.grad[None], dashpot_damping.grad[None],\
-               drag_damping.grad[None])
-        print(spring_YP[None], spring_YN[None], dashpot_damping[None], drag_damping[None])
-        
-    fig,axs = plt.subplots(2)
+        # print(spring_YP.grad[int(n_x/2),int(n_y/2),0], spring_YN.grad[int(n_x/2),int(n_y/2),0],\
+        #        dashpot_damping.grad[int(n_x/2),int(n_y/2),0], drag_damping.grad[int(n_x/2),int(n_y/2),0])
+        # print(spring_YP.grad[int(n_x/2),int(n_y/2),1], spring_YN.grad[int(n_x/2),int(n_y/2),1],\
+        #        dashpot_damping.grad[int(n_x/2),int(n_y/2),1], drag_damping.grad[int(n_x/2),int(n_y/2),1])
+        # print(spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-1], spring_YN.grad[int(n_x/2),int(n_y/2),max_steps-1], \
+        #       dashpot_damping.grad[int(n_x/2),int(n_y/2),max_steps-1], drag_damping.grad[int(n_x/2),int(n_y/2),max_steps-1])
+        # print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
+        #       dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
+        # print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
+        #       dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
+        # print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
+        #       dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
+    
+    spring_YPs_2=[]
+    for t in range(max_steps-1):        
+        spring_YPs_2.append(spring_YP[int(n_x/2),int(n_y/2),t+1])
+    fig,axs = plt.subplots(3)
     axs[0].plot(losses)  # 绘制损失曲线
     axs[1].plot(spring_YPs)  # 绘制损失曲线
+    axs[2].plot(spring_YPs_2)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
 
 
+# YODO：可将每层每个牙齿的弹簧参数用自动微分优化
+# TODO: 应用各种优化算法，如deepmind的蒙特卡洛树搜索，deepseek的GRPO等
 # TODO: 增加自碰撞处理
-# TODO: 可用自动微分优化牙弓/弹簧参数(类似强化学习？)
-#       with ti.ad.Tape(loss):
-#       需：a.保存每个时间步牙齿的位置
-#           b.计算最终状态的得分(Loss)
-#           c.应用各种优化算法，如deepmind的蒙特卡洛树搜索，deepseek的GRPO等
