@@ -253,7 +253,8 @@ def cal_force_and_update_xv(t: ti.i32):
     #     
 
     for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(v):#core
-        n = ti.Vector([i, j, t])
+        index = ti.Vector([i, j, t])
+        n = ti.Vector([i, j, t-1])
         force = ti.Vector([0.0, 0.0, 0.0])
         for offset_orig in ti.static(spring_offsets):
             spring_offset = ti.Vector([offset_orig[0], offset_orig[1], 0])
@@ -286,8 +287,8 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
-        f[n] = force
-        l[n] = ti.Vector([0.0, 0.0, 0.0])
+        f[index] = force
+        l[index] = ti.Vector([0.0, 0.0, 0.0])
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
                        (x[n][2]+bg_size_z*0.5)/bg_quad_size])
@@ -310,7 +311,7 @@ def cal_force_and_update_xv(t: ti.i32):
             direct_ud = (pos_check2 - pos_check1).normalized()
             field_check1 = field1[ti.cast(pos_check1, ti.i32)]
             field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-            l[n] += (field_check2+field_check1) * 0.5
+            l[index] += (field_check2+field_check1) * 0.5
             force += -(field_check2-field_check1)*direct_ud*field_damping[None]
         if pos[1] > bg_n[1]*0.5+0.5:
             force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
@@ -319,10 +320,10 @@ def cal_force_and_update_xv(t: ti.i32):
         else:
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
-        f[n] = force - f[n]
+        f[index] += -force#force - f[n]
         #v[n] = force * dt# 更新速度
-        v[n] += force * dt  # 更新速度
-        v[n] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
+        v[index] += force * dt  # 更新速度
+        v[index] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
         #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
         # # 碰撞检测
         # offset_to_center = x[n] - ball_center[0]
@@ -334,8 +335,9 @@ def cal_force_and_update_xv(t: ti.i32):
 
     # 添加全局约束
     ti.sync()
-    for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(v):
-        n = ti.Vector([i, j, t])
+    for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(v):        
+        index = ti.Vector([i, j, t])
+        n = ti.Vector([i, j, t-1])
         if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
             if n[0]!=0 and n[0]!=n_x-1:#固定两端 
                 if (n[0] -force_max_min_index[0]) * (n[0] -force_max_min_index[1]) < 0:
@@ -343,16 +345,17 @@ def cal_force_and_update_xv(t: ti.i32):
                     m = n+index_bias
                     direct_mn = (x[n]-x[m]).normalized()
                     if dist_max_min[0] > 0:
-                        v[n] += -direct_mn * 0.5
+                        v[index] += -direct_mn * 0.5
                     else:
-                        v[n] += -direct_mn * 0.5
+                        v[index] += -direct_mn * 0.5
 
     #更新位置
     ti.sync()
-    for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core
-        n = ti.Vector([i, j, t])
+    for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core        
+        index = ti.Vector([i, j, t])
+        n = ti.Vector([i, j, t-1])
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
-            x[n] += dt * v[n]
+            x[index] += dt * v[n]
             # #添加残差连接        
             # if t > 1 and t%20==1:
             #     n_b = n
