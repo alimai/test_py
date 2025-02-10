@@ -139,6 +139,7 @@ def output_spring_para():
     s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy(), drag_damping.to_numpy()])
     np.save('spring_para.npy', s_para)
 def load_spring_para():
+    #return False
     try:
         s_para = np.load('spring_para.npy')
     except FileNotFoundError:
@@ -168,12 +169,13 @@ def update_spring_para():
         sum_grad += abs(dashpot_damping.grad[i,j, t])
         sum_grad += abs(drag_damping.grad[i,j, t])
     adj_ratio = max_steps / (sum_grad+1e-5)
-    print(adj_ratio)
+    print("adj_ratio", adj_ratio)
     for i, j, t in x:
-        spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
-        spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
-        dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
-        #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
+        if t>=max_steps-2:
+            spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
+            spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
+            dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
+            #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
     
     # for t in ti.ndrange(max_steps):        
     #     sum_grad = 0.0
@@ -318,9 +320,9 @@ def cal_force_and_update_xv(t: ti.i32):
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
         f[n] = force - f[n]
-        v[n] = force * dt# 更新速度
+        #v[n] = force * dt# 更新速度
+        v[n] += force * dt  # 更新速度
         v[n] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
-        #v[n] += force * dt  # 更新速度
         #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
         # # 碰撞检测
         # offset_to_center = x[n] - ball_center[0]
@@ -399,9 +401,9 @@ def compute_loss(t):
     print("0:",loss[None])
     calcute_loss_x(t,j) 
     print(loss[None])
-    calcute_loss_v(t,j)    
-    print(loss[None])
     calcute_loss_dist(t,j)#,total_dist,list_dist) 
+    print(loss[None])
+    calcute_loss_v(t,j)    
     print(loss[None])
 
 
@@ -421,6 +423,8 @@ if __name__ == '__main__':  # 主函数
             dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
     print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
             dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
+    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-2], spring_YN[int(n_x/2),int(n_y/2),max_steps-2], \
+            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-2], drag_damping[int(n_x/2),int(n_y/2),max_steps-2])
     print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
             dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
 
@@ -440,44 +444,44 @@ if __name__ == '__main__':  # 主函数
                 if not window.running:
                     break    
 
-                if iter % (max_iter-1) == 0: #display 
-                    if n_step % 10 == 0:#if n_step+1 % (max_steps-1) == 0:  
-                        if n_step < max_steps*0.5:
-                            camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-                        else:
-                            camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
-                                            2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
-                                            0.0)  # 设置相机位置
-                        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-                        camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
-                        camera.up(0, 0, 1)
-                        scene.set_camera(camera)
+                # if iter % (max_iter-1) == 0: #display 
+                #     if n_step % 10 == 0:#if n_step+1 % (max_steps-1) == 0:  
+                #         if n_step < max_steps*0.5:
+                #             camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+                #         else:
+                #             camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                #                             2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                #                             0.0)  # 设置相机位置
+                #         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+                #         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
+                #         camera.up(0, 0, 1)
+                #         scene.set_camera(camera)
 
-                        scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
-                        scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
-                        #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
-                        # 绘制一个较小的球以避免视觉穿透
-                        #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
+                #         scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
+                #         scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
+                #         #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
+                #         # 绘制一个较小的球以避免视觉穿透
+                #         #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
 
-                        # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
-                        # for i in range(n_x):
-                        #     first_half[i] = x[i, 0]
-                        # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
-                        for i in range(4):
-                            point[0] = [0.0, 0.0, 0.0]
-                            color = [0.0, 0.0, 0.0]
-                            if i < 3:
-                                point[0][i] = 0.05
-                                color[i] = 1.0
-                            scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
-                        for i in range(n_x):
-                            point[0] = x[i, 1, n_step]
-                            scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+                #         # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
+                #         # for i in range(n_x):
+                #         #     first_half[i] = x[i, 0]
+                #         # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
+                #         for i in range(4):
+                #             point[0] = [0.0, 0.0, 0.0]
+                #             color = [0.0, 0.0, 0.0]
+                #             if i < 3:
+                #                 point[0][i] = 0.05
+                #                 color[i] = 1.0
+                #             scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
+                #         for i in range(n_x):
+                #             point[0] = x[i, 1, n_step]
+                #             scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
 
-                        scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
+                #         scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
 
-                        canvas.scene(scene)
-                        window.show()
+                #         canvas.scene(scene)
+                #         window.show()
             
                 n_step += 1
                 init_points_t(n_step)
@@ -503,12 +507,26 @@ if __name__ == '__main__':  # 主函数
         #        dashpot_damping.grad[int(n_x/2),int(n_y/2),1], drag_damping.grad[int(n_x/2),int(n_y/2),1])
         # print(spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-1], spring_YN.grad[int(n_x/2),int(n_y/2),max_steps-1], \
         #       dashpot_damping.grad[int(n_x/2),int(n_y/2),max_steps-1], drag_damping.grad[int(n_x/2),int(n_y/2),max_steps-1])
+        print(spring_YP.grad[int(n_x/2),int(n_y/2),0], spring_YP.grad[int(n_x/2),int(n_y/2),1], \
+              spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-2], spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-1])
         # print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
         #       dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
         # print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
         #       dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
         # print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
         #       dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
+        print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YP[int(n_x/2),int(n_y/2),1], \
+              spring_YP[int(n_x/2),int(n_y/2),max_steps-2], spring_YP[int(n_x/2),int(n_y/2),max_steps-1])
+
+    
+    print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
+            dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
+    print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
+            dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
+    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-2], spring_YN[int(n_x/2),int(n_y/2),max_steps-2], \
+            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-2], drag_damping[int(n_x/2),int(n_y/2),max_steps-2])
+    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
+            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
     
     output_spring_para()
     spring_YPs_2=[]
