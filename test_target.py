@@ -269,12 +269,12 @@ def cal_force_and_update_xv(t: ti.i32):
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
-                    force_cur += -spring_YP[index] * direct_mn * (current_dist - original_dist)#**2
+                    force_cur += -spring_YP[n] * direct_mn * (current_dist - original_dist)#**2
                 else:
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
-                    force_cur += spring_YN[index] * direct_mn * (original_dist - current_dist)#**0.5
+                    force_cur += spring_YN[n] * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
-                #force_cur += -dashpot_damping[index] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
+                #force_cur += -dashpot_damping[n] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
                 if spring_offset[0] != 0:
                     force_value = force_cur.norm()
@@ -324,7 +324,7 @@ def cal_force_and_update_xv(t: ti.i32):
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             #v[n] = force * dt# 更新速度
             #v[index] += force * dt  # 更新速度
-            v[index] = (v[n]+force * dt)*ti.exp(-drag_damping[index] * dt)  # 更新速度并施加空气阻力
+            v[index] = (v[n]+force * dt)*ti.exp(-drag_damping[n] * dt)  # 更新速度并施加空气阻力
             #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
             # # 碰撞检测
             # offset_to_center = x[n] - ball_center[0]
@@ -441,7 +441,7 @@ if __name__ == '__main__':  # 主函数
     
     spring_YPs=[]
     losses = []  # 损失列表
-    max_iter = 100
+    max_iter = 1000
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
@@ -495,7 +495,7 @@ if __name__ == '__main__':  # 主函数
                 print('Iter=', iter, 'Loss=', loss[None])
                 print()
                 losses.append(loss[None])  # 添加损失到列表
-                spring_YPs.append(spring_YP[n_x//2,n_y//2,max_steps-1])
+                spring_YPs.append(spring_YP[n_x//2,n_y//2,max_steps-2])
                 
         # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
         #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
@@ -536,7 +536,7 @@ if __name__ == '__main__':  # 主函数
     output_spring_para()
     spring_YPs_2=[]
     for t in range(max_steps-1):        
-        spring_YPs_2.append(spring_YP[n_x//2,n_y//2,t+1])
+        spring_YPs_2.append(spring_YP[n_x//2,n_y//2,t])
     fig,axs = plt.subplots(3)
     axs[0].plot(losses)  # 绘制损失曲线
     axs[1].plot(spring_YPs)  # 绘制损失曲线
