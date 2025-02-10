@@ -322,8 +322,8 @@ def cal_force_and_update_xv(t: ti.i32):
 
         f[index] = force - f_pos
         #v[n] = force * dt# 更新速度
-        v[index] += force * dt  # 更新速度
-        v[index] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
+        #v[index] += force * dt  # 更新速度
+        v[index] = (v[n]+force * dt)*ti.exp(-drag_damping[index] * dt)  # 更新速度并施加空气阻力
         #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
         # # 碰撞检测
         # offset_to_center = x[n] - ball_center[0]
