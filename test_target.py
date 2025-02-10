@@ -269,12 +269,12 @@ def cal_force_and_update_xv(t: ti.i32):
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
-                    force_cur += -spring_YP[n] * direct_mn * (current_dist - original_dist)#**2
+                    force_cur += -spring_YP[index] * direct_mn * (current_dist - original_dist)#**2
                 else:
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
-                    force_cur += spring_YN[n] * direct_mn * (original_dist - current_dist)#**0.5
+                    force_cur += spring_YN[index] * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
-                #force_cur += -dashpot_damping[n] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
+                #force_cur += -dashpot_damping[index] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
                 if spring_offset[0] != 0:
                     force_value = force_cur.norm()
@@ -287,7 +287,7 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
-        f[index] = force
+        f_pos = force
         l[index] = ti.Vector([0.0, 0.0, 0.0])
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
@@ -320,7 +320,7 @@ def cal_force_and_update_xv(t: ti.i32):
         else:
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
-        f[index] += -force#force - f[n]
+        f[index] = force - f_pos
         #v[n] = force * dt# 更新速度
         v[index] += force * dt  # 更新速度
         v[index] *= ti.exp(-drag_damping[n] * dt)  # 施加空气阻力
@@ -487,7 +487,7 @@ if __name__ == '__main__':  # 主函数
                 #         window.show()
             
                 n_step += 1
-                init_points_t(n_step)
+                #init_points_t(n_step)#初始化后也不能访问
                 substep(n_step)  # 执行子步
             if window.running: 
                 compute_loss(n_step)
