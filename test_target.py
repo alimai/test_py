@@ -2,7 +2,7 @@ import numpy as np
 import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
-ti.init(arch=ti.cpu,random_seed=int(time.time()))#0)#  # 初始化Taichi，使用CPU架构
+ti.init(arch=ti.cpu)#  # 初始化Taichi，使用CPU架构
 
 ellipse_long = 0.6  # mm,椭圆的长轴
 ellipse_short = 0.35  # mm,椭圆的短轴
@@ -198,7 +198,7 @@ def initialize_mass_points(t: ti.i32):
     size_y = n_y * quad_size#size_x * n_y / n_x  # 分布范围   
     index_center_x = 7.5
     for i, j in ti.ndrange(n_x, n_y):# 初始化质点位置
-        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.03  # 随机偏移量
+        random_offset = ti.Vector([0.01,0.01,0.01])#ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.03  # 随机偏移量
         x[i, j, t] = [
             i * quad_size - size_x * 0.5 + 0.5 * quad_size,
             j * quad_size - size_y * 0.5 + 0.5 * quad_size,
@@ -357,14 +357,15 @@ def cal_force_and_update_xv(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core        
         index = ti.Vector([i, j, t])
         n = ti.Vector([i, j, t-1])
-        #添加残差连接        
-        if t > 1 and t%20==1:
-            x[index] = (x[n]+dt * v[index])*0.5
-            n_b = n
-            n_b[2] -= 21
-            x[index] += x[n_b] * 0.5
-        else:
-            x[index] = (x[n]+dt * v[index])                
+        x[index] = (x[n]+dt * v[index]) 
+        # #添加残差连接        
+        # if t > 1 and t%20==1:
+        #     x[index] = (x[n]+dt * v[index])*0.5
+        #     n_b = index
+        #     n_b[2] -= 21
+        #     x[index] += x[n_b] * 0.5      
+        # else:
+        #     x[index] = (x[n]+dt * v[index])  
 
 
 def substep(t):
@@ -380,7 +381,7 @@ def substep(t):
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
         loss[None] += l[i,j,t].norm()*1e2
-        print(i, x[i,j,1], l[i,j,20])
+        # print(i, x[i,j,100], l[i,j,20])
 @ti.kernel
 def calcute_loss_v(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
@@ -487,7 +488,7 @@ if __name__ == '__main__':  # 主函数
                 #         canvas.scene(scene)
                 #         window.show()
             
-                init_points_t(n)
+                #init_points_t(n)
                 substep(n)  # 执行子步
             if window.running: 
                 compute_loss(max_steps-1)
