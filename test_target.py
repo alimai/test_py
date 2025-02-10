@@ -169,9 +169,9 @@ def update_spring_para():
         sum_grad += abs(dashpot_damping.grad[i,j, t])
         sum_grad += abs(drag_damping.grad[i,j, t])
     adj_ratio = max_steps / (sum_grad+1e-5)
-    print("adj_ratio", adj_ratio)
+    #print("adj_ratio", adj_ratio)
     for i, j, t in x:
-        if t>=max_steps-2:
+        #if t>=max_steps-2:
             spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
             spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
             dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
@@ -222,7 +222,7 @@ def init_points_t(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):
         x[i,j,t] = x[i,j,t-1]
         v[i,j,t] = v[i,j,t-1]
-        # if i==int(n_x/2) and j==int(n_y/2):
+        # if i==n_x//2 and j==n_y//2:
         #     print(t, f[10,j,t-1])
         #     print(t, l[10,j,t-1])
         #     print(t, v[10,j,t-1])
@@ -321,17 +321,20 @@ def cal_force_and_update_xv(t: ti.i32):
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
         f[index] = force - f_pos
-        #v[n] = force * dt# 更新速度
-        #v[index] += force * dt  # 更新速度
-        v[index] = (v[n]+force * dt)*ti.exp(-drag_damping[index] * dt)  # 更新速度并施加空气阻力
-        #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
-        # # 碰撞检测
-        # offset_to_center = x[n] - ball_center[0]
-        # offset_to_center[1] = 0#当作圆柱处理
-        # #if offset_to_center.norm() <= ellipse_short:
-        # if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
-        #         normal = offset_to_center.normalized()# 速度投影
-        #         v[n] -= min(v[n].dot(normal), 0) * normal
+        if n[0]!=0 and n[0]!=n_x-1:#固定两端
+            #v[n] = force * dt# 更新速度
+            #v[index] += force * dt  # 更新速度
+            v[index] = (v[n]+force * dt)*ti.exp(-drag_damping[index] * dt)  # 更新速度并施加空气阻力
+            #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
+            # # 碰撞检测
+            # offset_to_center = x[n] - ball_center[0]
+            # offset_to_center[1] = 0#当作圆柱处理
+            # #if offset_to_center.norm() <= ellipse_short:
+            # if (ellipse_long*x[n][0])**2+(ellipse_short*x[n][2])**2 < (ellipse_short*ellipse_long)**2:
+            #         normal = offset_to_center.normalized()# 速度投影
+            #         v[n] += -min(v[n].dot(normal), 0) * normal
+        else:
+            v[index] = 0.0
 
     # 添加全局约束
     ti.sync()
@@ -354,14 +357,14 @@ def cal_force_and_update_xv(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core        
         index = ti.Vector([i, j, t])
         n = ti.Vector([i, j, t-1])
-        if n[0]!=0 and n[0]!=n_x-1:#固定两端
-            x[index] += dt * v[n]
-            # #添加残差连接        
-            # if t > 1 and t%20==1:
-            #     n_b = n
-            #     n_b[2] -= 21
-            #     x[n] += x[n_b] * 0.1
-            #     x[n] /= 1.1
+        #添加残差连接        
+        if t > 1 and t%20==1:
+            x[index] = (x[n]+dt * v[index])*0.5
+            n_b = n
+            n_b[2] -= 21
+            x[index] += x[n_b] * 0.5
+        else:
+            x[index] = (x[n]+dt * v[index])                
 
 
 def substep(t):
@@ -372,13 +375,12 @@ def substep(t):
     force_max_min_index[0] = 0
     force_max_min_index[1] = 0
     cal_force_and_update_xv(t)
-    # if abs(force_max_min_index[0]-force_max_min_index[1]) > 3:
-    #     print((force_max_min[0]-force_max_min[1]) * dt, dist_max_min, force_max_min_index)
 
 @ti.kernel
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
         loss[None] += l[i,j,t].norm()*1e2
+        print(i, x[i,j,1], l[i,j,20])
 @ti.kernel
 def calcute_loss_v(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
@@ -422,14 +424,14 @@ if __name__ == '__main__':  # 主函数
     field_damping[None] = field_damping_base
     if not load_spring_para():
         initialize_spring_para()
-    print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
-            dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
-    print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
-            dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
-    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-2], spring_YN[int(n_x/2),int(n_y/2),max_steps-2], \
-            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-2], drag_damping[int(n_x/2),int(n_y/2),max_steps-2])
-    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
-            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
+    print(spring_YP[n_x//2,n_y//2,0], spring_YN[n_x//2,n_y//2,0], \
+            dashpot_damping[n_x//2,n_y//2,0], drag_damping[n_x//2,n_y//2,0])
+    print(spring_YP[n_x//2,n_y//2,1], spring_YN[n_x//2,n_y//2,1], \
+            dashpot_damping[n_x//2,n_y//2,1], drag_damping[n_x//2,n_y//2,1])
+    print(spring_YP[n_x//2,n_y//2,max_steps-2], spring_YN[n_x//2,n_y//2,max_steps-2], \
+            dashpot_damping[n_x//2,n_y//2,max_steps-2], drag_damping[n_x//2,n_y//2,max_steps-2])
+    print(spring_YP[n_x//2,n_y//2,max_steps-1], spring_YN[n_x//2,n_y//2,max_steps-1], \
+            dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
 
 
     transe_field_data() # for display 
@@ -440,20 +442,19 @@ if __name__ == '__main__':  # 主函数
     losses = []  # 损失列表
     max_iter = 100
     for iter in range(max_iter):#while window.running:
-        n_step = 0
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
-            for n in range(max_steps-1): # note: max_steps-1 here 
+            for n in range(1, max_steps):
                 if not window.running:
                     break    
 
                 # if iter % (max_iter-1) == 0: #display 
-                #     if n_step % 10 == 0:#if n_step+1 % (max_steps-1) == 0:  
-                #         if n_step < max_steps*0.5:
+                #     if n % 10 == 1:#if n % (max_steps-1) == 0:  
+                #         if n < max_steps*0.5:
                 #             camera.position(0.0, 2.0, 0.0)  # 设置相机位置
                 #         else:
-                #             camera.position(2.0 * np.sin((n_step-max_steps*0.5) / max_steps *np.pi*4),
-                #                             2.0 * np.cos((n_step-max_steps*0.5) / max_steps *np.pi*4),
+                #             camera.position(2.0 * np.sin((n-max_steps*0.5) / max_steps *np.pi*4),
+                #                             2.0 * np.cos((n-max_steps*0.5) / max_steps *np.pi*4),
                 #                             0.0)  # 设置相机位置
                 #         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
                 #         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
@@ -478,7 +479,7 @@ if __name__ == '__main__':  # 主函数
                 #                 color[i] = 1.0
                 #             scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
                 #         for i in range(n_x):
-                #             point[0] = x[i, 1, n_step]
+                #             point[0] = x[i, 1, n]
                 #             scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
 
                 #         scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
@@ -486,14 +487,14 @@ if __name__ == '__main__':  # 主函数
                 #         canvas.scene(scene)
                 #         window.show()
             
-                n_step += 1
-                init_points_t(n_step)
-                substep(n_step)  # 执行子步
+                init_points_t(n)
+                substep(n)  # 执行子步
             if window.running: 
-                compute_loss(n_step)
+                compute_loss(max_steps-1)
                 print('Iter=', iter, 'Loss=', loss[None])
+                print()
                 losses.append(loss[None])  # 添加损失到列表
-                spring_YPs.append(spring_YP[int(n_x/2),int(n_y/2),max_steps-1])
+                spring_YPs.append(spring_YP[n_x//2,n_y//2,max_steps-1])
                 
         # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
         #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
@@ -504,37 +505,37 @@ if __name__ == '__main__':  # 主函数
         # print(adj_ratio)
         update_spring_para()
         learning_rate *= (1.0 - alpha)
-        # print(spring_YP.grad[int(n_x/2),int(n_y/2),0], spring_YN.grad[int(n_x/2),int(n_y/2),0],\
-        #        dashpot_damping.grad[int(n_x/2),int(n_y/2),0], drag_damping.grad[int(n_x/2),int(n_y/2),0])
-        # print(spring_YP.grad[int(n_x/2),int(n_y/2),1], spring_YN.grad[int(n_x/2),int(n_y/2),1],\
-        #        dashpot_damping.grad[int(n_x/2),int(n_y/2),1], drag_damping.grad[int(n_x/2),int(n_y/2),1])
-        # print(spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-1], spring_YN.grad[int(n_x/2),int(n_y/2),max_steps-1], \
-        #       dashpot_damping.grad[int(n_x/2),int(n_y/2),max_steps-1], drag_damping.grad[int(n_x/2),int(n_y/2),max_steps-1])
-        print(spring_YP.grad[int(n_x/2),int(n_y/2),0], spring_YP.grad[int(n_x/2),int(n_y/2),1], \
-              spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-2], spring_YP.grad[int(n_x/2),int(n_y/2),max_steps-1])
-        # print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
-        #       dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
-        # print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
-        #       dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
-        # print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
-        #       dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
-        print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YP[int(n_x/2),int(n_y/2),1], \
-              spring_YP[int(n_x/2),int(n_y/2),max_steps-2], spring_YP[int(n_x/2),int(n_y/2),max_steps-1])
+        # print(spring_YP.grad[n_x//2,n_y//2,0], spring_YN.grad[n_x//2,n_y//2,0],\
+        #        dashpot_damping.grad[n_x//2,n_y//2,0], drag_damping.grad[n_x//2,n_y//2,0])
+        # print(spring_YP.grad[n_x//2,n_y//2,1], spring_YN.grad[n_x//2,n_y//2,1],\
+        #        dashpot_damping.grad[n_x//2,n_y//2,1], drag_damping.grad[n_x//2,n_y//2,1])
+        # print(spring_YP.grad[n_x//2,n_y//2,max_steps-1], spring_YN.grad[n_x//2,n_y//2,max_steps-1], \
+        #       dashpot_damping.grad[n_x//2,n_y//2,max_steps-1], drag_damping.grad[n_x//2,n_y//2,max_steps-1])
+        # print(spring_YP.grad[n_x//2,n_y//2,0], spring_YP.grad[n_x//2,n_y//2,1], \
+        #       spring_YP.grad[n_x//2,n_y//2,max_steps-2], spring_YP.grad[n_x//2,n_y//2,max_steps-1])
+        # print(spring_YP[n_x//2,n_y//2,0], spring_YN[n_x//2,n_y//2,0], \
+        #       dashpot_damping[n_x//2,n_y//2,0], drag_damping[n_x//2,n_y//2,0])
+        # print(spring_YP[n_x//2,n_y//2,1], spring_YN[n_x//2,n_y//2,1], \
+        #       dashpot_damping[n_x//2,n_y//2,1], drag_damping[n_x//2,n_y//2,1])
+        # print(spring_YP[n_x//2,n_y//2,max_steps-1], spring_YN[n_x//2,n_y//2,max_steps-1], \
+        #       dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
+        print(spring_YP[n_x//2,n_y//2,0], spring_YP[n_x//2,n_y//2,1], \
+              spring_YP[n_x//2,n_y//2,max_steps-2], spring_YP[n_x//2,n_y//2,max_steps-1])
 
     
-    print(spring_YP[int(n_x/2),int(n_y/2),0], spring_YN[int(n_x/2),int(n_y/2),0], \
-            dashpot_damping[int(n_x/2),int(n_y/2),0], drag_damping[int(n_x/2),int(n_y/2),0])
-    print(spring_YP[int(n_x/2),int(n_y/2),1], spring_YN[int(n_x/2),int(n_y/2),1], \
-            dashpot_damping[int(n_x/2),int(n_y/2),1], drag_damping[int(n_x/2),int(n_y/2),1])
-    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-2], spring_YN[int(n_x/2),int(n_y/2),max_steps-2], \
-            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-2], drag_damping[int(n_x/2),int(n_y/2),max_steps-2])
-    print(spring_YP[int(n_x/2),int(n_y/2),max_steps-1], spring_YN[int(n_x/2),int(n_y/2),max_steps-1], \
-            dashpot_damping[int(n_x/2),int(n_y/2),max_steps-1], drag_damping[int(n_x/2),int(n_y/2),max_steps-1])
+    print(spring_YP[n_x//2,n_y//2,0], spring_YN[n_x//2,n_y//2,0], \
+            dashpot_damping[n_x//2,n_y//2,0], drag_damping[n_x//2,n_y//2,0])
+    print(spring_YP[n_x//2,n_y//2,1], spring_YN[n_x//2,n_y//2,1], \
+            dashpot_damping[n_x//2,n_y//2,1], drag_damping[n_x//2,n_y//2,1])
+    print(spring_YP[n_x//2,n_y//2,max_steps-2], spring_YN[n_x//2,n_y//2,max_steps-2], \
+            dashpot_damping[n_x//2,n_y//2,max_steps-2], drag_damping[n_x//2,n_y//2,max_steps-2])
+    print(spring_YP[n_x//2,n_y//2,max_steps-1], spring_YN[n_x//2,n_y//2,max_steps-1], \
+            dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
     
     output_spring_para()
     spring_YPs_2=[]
     for t in range(max_steps-1):        
-        spring_YPs_2.append(spring_YP[int(n_x/2),int(n_y/2),t+1])
+        spring_YPs_2.append(spring_YP[n_x//2,n_y//2,t+1])
     fig,axs = plt.subplots(3)
     axs[0].plot(losses)  # 绘制损失曲线
     axs[1].plot(spring_YPs)  # 绘制损失曲线
