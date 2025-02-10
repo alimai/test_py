@@ -487,7 +487,7 @@ if __name__ == '__main__':  # 主函数
                 #         window.show()
             
                 n_step += 1
-                #init_points_t(n_step)#初始化后也不能访问
+                init_points_t(n_step)
                 substep(n_step)  # 执行子步
             if window.running: 
                 compute_loss(n_step)
