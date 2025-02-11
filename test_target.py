@@ -162,6 +162,14 @@ def initialize_spring_para():
 
 @ti.kernel
 def update_spring_para():
+    # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
+    #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
+    # spring_YP[None] -= learning_rate * spring_YP.grad[None] * spring_YP[None]*adj_ratio
+    # spring_YN[None] -= learning_rate * spring_YN.grad[None] * spring_YN[None]*adj_ratio
+    # dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * dashpot_damping[None]*adj_ratio
+    # #drag_damping[None] -= learning_rate * drag_damping.grad[None] * drag_damping[None]*adj_ratio
+    # print(adj_ratio)
+
     sum_grad = 0.0
     for i, j, t in x:
         sum_grad += abs(spring_YP.grad[i,j, t])
@@ -411,17 +419,46 @@ def compute_loss(t):
     calcute_loss_v(t,j)    
     print(loss[None])
 
+point = ti.Vector.field(3, dtype=float, shape=1) # for display 
+def run_windows(n):
+    if n < max_steps*0.5:
+        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+    else:
+        camera.position(2.0 * np.sin((n-max_steps*0.5) / max_steps *np.pi*4),
+                        2.0 * np.cos((n-max_steps*0.5) / max_steps *np.pi*4),
+                        0.0)  # 设置相机位置
+    camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+    camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
+    camera.up(0, 0, 1)
+    scene.set_camera(camera)
+
+    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
+    scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
+    for i in range(4):
+        point[0] = [0.0, 0.0, 0.0]
+        color = [0.0, 0.0, 0.0]
+        if i < 3:
+            point[0][i] = 0.05
+            color[i] = 1.0
+        scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
+    for i in range(n_x):
+        point[0] = x[i, 1, n]
+        scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+
+    scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
+    #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
+
+    canvas.scene(scene)
+    window.show()
 
 if __name__ == '__main__':  # 主函数
-    # window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
-    # canvas = window.get_canvas()
-    # canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
-    # scene = window.get_scene()
-    # camera = ti.ui.make_camera()
+    window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
+    canvas = window.get_canvas()
+    canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
+    scene = window.get_scene()
+    camera = ti.ui.make_camera()
 
-    # transe_field_data() # for display 
-    # point = ti.Vector.field(3, dtype=float, shape=1) # for display 
-   
+    transe_field_data() # for display    
     
     add_field_offsets()
     add_spring_offsets()    
@@ -437,72 +474,25 @@ if __name__ == '__main__':  # 主函数
     print(spring_YP[n_x//2,n_y//2,max_steps-1], spring_YN[n_x//2,n_y//2,max_steps-1], \
             dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
 
-
     
     spring_YPs=[]
     losses = []  # 损失列表
-    max_iter = 1000
+    max_iter = 20000
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
-            for n in range(1, max_steps):
-                # if not window.running:
-                #     break    
-                # if iter % (max_iter-1) == 0: #display 
-                #     if n % 10 == 1:#if n % (max_steps-1) == 0:  
-                #         if n < max_steps*0.5:
-                #             camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-                #         else:
-                #             camera.position(2.0 * np.sin((n-max_steps*0.5) / max_steps *np.pi*4),
-                #                             2.0 * np.cos((n-max_steps*0.5) / max_steps *np.pi*4),
-                #                             0.0)  # 设置相机位置
-                #         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
-                #         camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
-                #         camera.up(0, 0, 1)
-                #         scene.set_camera(camera)
-
-                #         scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
-                #         scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
-                #         #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
-                #         # 绘制一个较小的球以避免视觉穿透
-                #         #scene.particles(ball_center, radius=ellipse_short * 0.95, color=(0.5, 0.5, 0.5))
-
-                #         # first_half = ti.Vector.field(3, dtype=float, shape=n_x)
-                #         # for i in range(n_x):
-                #         #     first_half[i] = x[i, 0]
-                #         # scene.particles(first_half, radius=0.02, color=(0.5, 0.42, 0.8))
-                #         for i in range(4):
-                #             point[0] = [0.0, 0.0, 0.0]
-                #             color = [0.0, 0.0, 0.0]
-                #             if i < 3:
-                #                 point[0][i] = 0.05
-                #                 color[i] = 1.0
-                #             scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
-                #         for i in range(n_x):
-                #             point[0] = x[i, 1, n]
-                #             scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
-
-                #         scene.particles(field1_index, radius=0.001, color=(0.5, 0.5, 0.5))
-
-                #         canvas.scene(scene)
-                #         window.show()
-            
+            for n in range(1, max_steps):            
                 #init_points_t(n)
                 substep(n)  # 执行子步
-            #if window.running: 
+                if iter % (max_iter//10) == 0: #display 
+                    if n % 10 == 1:#if n % (max_steps-1) == 0: 
+                        run_windows(n)
             compute_loss(max_steps-1)
             print('Iter=', iter, 'Loss=', loss[None])
             print()
             losses.append(loss[None])  # 添加损失到列表
             spring_YPs.append(spring_YP[n_x//2,n_y//2,max_steps-2])
                 
-        # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
-        #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
-        # spring_YP[None] -= learning_rate * spring_YP.grad[None] * spring_YP[None]*adj_ratio
-        # spring_YN[None] -= learning_rate * spring_YN.grad[None] * spring_YN[None]*adj_ratio
-        # dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * dashpot_damping[None]*adj_ratio
-        # #drag_damping[None] -= learning_rate * drag_damping.grad[None] * drag_damping[None]*adj_ratio
-        # print(adj_ratio)
         update_spring_para()
         learning_rate *= (1.0 - alpha)
         # print(spring_YP.grad[n_x//2,n_y//2,0], spring_YN.grad[n_x//2,n_y//2,0],\
@@ -533,6 +523,7 @@ if __name__ == '__main__':  # 主函数
             dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
     
     output_spring_para()
+    run_windows(max_steps-1)
     spring_YPs_2=[]
     for t in range(max_steps-1):        
         spring_YPs_2.append(spring_YP[n_x//2,n_y//2,t])
