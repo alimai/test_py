@@ -11,7 +11,7 @@ n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小基准
 
-spring_YP_base = 1e1  #1.2e6 # 引力系数--长度相关
+spring_YP_base = 1e5  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
 drag_damping_base = 1e4  # 空气阻力系数
@@ -316,7 +316,6 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
-        f_pos = force
         l[index] = ti.Vector([0.0, 0.0, 0.0])
         pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
                        (x[n][1]+bg_size_y*0.5)/bg_quad_size,
@@ -349,7 +348,7 @@ def cal_force_and_update_xv(t: ti.i32):
         else:
             force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
 
-        f[index] = force - f_pos
+        f[index] = force
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             #v[n] = force * dt# 更新速度
             #v[index] += force * dt  # 更新速度
@@ -399,15 +398,6 @@ def substep(t):
     cal_force_and_update_xv(t)
 
 @ti.kernel
-def calcute_loss_x(t: ti.i32, j: ti.i32):
-    for i in ti.ndrange(n_x):
-        loss[None] += l[i,j,t].norm()*1e2
-        # print(i, x[i,j,100], l[i,j,20])
-@ti.kernel
-def calcute_loss_v(t: ti.i32, j: ti.i32):
-    for i in ti.ndrange(n_x):
-        loss[None] += v[i,j,t].norm()
-@ti.kernel
 def calcute_loss_dist(t: ti.i32, j: ti.i32):    
     list_dist = ti.Vector([0.0] * (n_x-1))
     total_length = 0.0
@@ -420,21 +410,43 @@ def calcute_loss_dist(t: ti.i32, j: ti.i32):
     #与椭圆半周长偏差
     loss[None] += abs(total_length - np.pi*((ellipse_long**2+ellipse_short**2)*0.5)**0.5)*1e4
     for i in ti.static(range(n_x-1)):
-        loss[None] += abs(list_dist[i]-avg_bias)*1e4
+        loss[None] += abs(list_dist[i]-avg_bias)*1e5
+@ti.kernel
+def calcute_loss_x(t: ti.i32, j: ti.i32):
+    for i in ti.ndrange(n_x):
+        loss[None] += l[i,j,t].norm()*1e2
+        # print(i, x[i,j,100], l[i,j,20])
+@ti.kernel
+def calcute_loss_v(t: ti.i32, j: ti.i32):
+    for i in ti.ndrange(n_x):
+        loss[None] += v[i,j,t].norm()
+@ti.kernel
+def calcute_loss_f(t: ti.i32, j: ti.i32):
+    for i in ti.ndrange(n_x):
+        loss[None] += f[i,j,t].norm()*1e-2
 
 def compute_loss(t):
     loss[None] = 0.0
     j = n_y//2
     print("0:",loss[None])
-    calcute_loss_x(t,j) 
-    print(loss[None])
     calcute_loss_dist(t,j)#,total_dist,list_dist) 
+    print(loss[None])
+    calcute_loss_x(t,j) 
     print(loss[None])
     calcute_loss_v(t,j)    
     print(loss[None])
-
+    # calcute_loss_f(t,j)    
+    # print(loss[None])
+ 
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
-def run_windows(n):
+def run_windows(window, n, keep = False):
+    if window is None:
+        window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
+        canvas = window.get_canvas()
+        canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
+        scene = window.get_scene()
+        camera = ti.ui.make_camera()
+
     if n < max_steps*0.5:
         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
     else:
@@ -464,16 +476,15 @@ def run_windows(n):
 
     canvas.scene(scene)
     window.show()
+    if keep:
+        input()
 
-if __name__ == '__main__':  # 主函数
-    # window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
-    # canvas = window.get_canvas()
-    # canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
-    # scene = window.get_scene()
-    # camera = ti.ui.make_camera()
+if __name__ == '__main__':  # 主函数  
 
-    # transe_field_data() # for display    
-    
+    max_iter = 3000# 最大迭代次数  
+    window = None    
+    transe_field_data() # for display
+
     add_field_offsets()
     add_spring_offsets()    
     field_damping[None] = field_damping_base
@@ -487,7 +498,6 @@ if __name__ == '__main__':  # 主函数
     
     spring_YPs=[]
     losses =[]  # 损失列表
-    max_iter = 1000 # 最大迭代次数
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
@@ -496,7 +506,7 @@ if __name__ == '__main__':  # 主函数
                 substep(n)  # 执行子步
                 # if iter % (max_iter//10) == 0: #display 
                 #     if n % 10 == 1:#if n % (max_steps-1) == 0: 
-                #         run_windows(n)
+                #         run_windows(window, n)
             compute_loss(max_steps-1)
   
         learning_rate *= (1.0 - alpha)
@@ -522,7 +532,7 @@ if __name__ == '__main__':  # 主函数
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
     output_spring_para()
-    #run_windows(max_steps-1)
+    run_windows(window, max_steps-1, keep = True)
     spring_YPs_2=[]
     for t in range(max_steps-1):        
         spring_YPs_2.append(spring_YP[t])
