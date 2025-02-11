@@ -47,7 +47,7 @@ l = vec() #location in field
 lay2.place(x, v, f, l, spring_YP, spring_YN, dashpot_damping, drag_damping)
 
 
-dt = 3e-4  # 时间步长
+dt = 1e-4  # 时间步长
 alpha = 1e-8  # 学习率衰减
 learning_rate = 1.0  # 学习率
 
@@ -365,14 +365,7 @@ def cal_force_and_update_xv(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core        
         index = ti.Vector([i, j, t])
         n = ti.Vector([i, j, t-1])
-        #x[index] = (x[n] + dt * v[index]) 
-        #添加残差连接        
-        if t > 20:# and t%20==1:
-            n_b = n
-            n_b[2] -= 20
-            x[index] = (x[n] + dt * v[index] + x[n_b])*0.5
-        else:
-            x[index] = (x[n] + dt * v[index])  
+        x[index] = (x[n] + dt * v[index]) 
 
 
 def substep(t):
@@ -477,7 +470,7 @@ if __name__ == '__main__':  # 主函数
     
     spring_YPs=[]
     losses = []  # 损失列表
-    max_iter = 20000
+    max_iter = 10000
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
