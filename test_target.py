@@ -11,7 +11,7 @@ n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小基准
 
-spring_YP_base = 3e6  #1.2e6 # 引力系数--长度相关
+spring_YP_base = 1e1  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
 drag_damping_base = 1e4  # 空气阻力系数
@@ -190,7 +190,7 @@ def update_spring_para():
             spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
             spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
             dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
-            #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
+            drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
     
     # for t in ti.ndrange(max_steps):        
     #     sum_grad = 0.0
@@ -204,7 +204,7 @@ def update_spring_para():
     #         spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
     #         spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
     #         dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
-    #         #drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
+    #         drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
 
 @ti.kernel
 def update_spring_para2():
@@ -221,7 +221,7 @@ def update_spring_para2():
             spring_YP[t] += -learning_rate * spring_YP.grad[t] * spring_YP[t]*adj_ratio
             spring_YN[t] += -learning_rate * spring_YN.grad[t] * spring_YN[t]*adj_ratio
             dashpot_damping[t] += -learning_rate * dashpot_damping.grad[t] * dashpot_damping[t]*adj_ratio
-            #drag_damping[t] += -learning_rate * drag_damping.grad[t] * drag_damping[t]*adj_ratio
+            drag_damping[t] += -learning_rate * drag_damping.grad[t] * drag_damping[t]*adj_ratio
     
 
 @ti.kernel
@@ -255,10 +255,6 @@ def init_points_t(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):
         x[i,j,t] = x[i,j,t-1]
         v[i,j,t] = v[i,j,t-1]
-        # if i==n_x//2 and j==n_y//2:
-        #     print(t, f[10,j,t-1])
-        #     print(t, l[10,j,t-1])
-        #     print(t, v[10,j,t-1])
 
 def add_spring_offsets():
     if bending_springs:
@@ -491,7 +487,7 @@ if __name__ == '__main__':  # 主函数
     
     spring_YPs=[]
     losses =[]  # 损失列表
-    max_iter = 3000 # 最大迭代次数
+    max_iter = 1000 # 最大迭代次数
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
@@ -511,11 +507,11 @@ if __name__ == '__main__':  # 主函数
         print('Iter=', iter, 'Loss=', loss[None])
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
-        # print(spring_YP.grad[max_steps-1], spring_YN.grad[max_steps-1], dashpot_damping.grad[max_steps-1], drag_damping.grad[max_steps-1])
+        #print(spring_YP.grad[max_steps-2], spring_YN.grad[max_steps-2], dashpot_damping.grad[max_steps-2], drag_damping.grad[max_steps-2])
         # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
         # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
         # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
-        # print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
+        print(spring_YP[max_steps-2], spring_YN[max_steps-2], dashpot_damping[max_steps-2], drag_damping[max_steps-2])
         print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
         print()
 
