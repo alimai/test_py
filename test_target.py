@@ -414,11 +414,15 @@ def compute_loss(t):
 
 
 if __name__ == '__main__':  # 主函数
-    window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
-    canvas = window.get_canvas()
-    canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
-    scene = window.get_scene()
-    camera = ti.ui.make_camera()
+    # window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
+    # canvas = window.get_canvas()
+    # canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
+    # scene = window.get_scene()
+    # camera = ti.ui.make_camera()
+
+    # transe_field_data() # for display 
+    # point = ti.Vector.field(3, dtype=float, shape=1) # for display 
+   
     
     add_field_offsets()
     add_spring_offsets()    
@@ -435,9 +439,6 @@ if __name__ == '__main__':  # 主函数
             dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
 
 
-    transe_field_data() # for display 
-    point = ti.Vector.field(3, dtype=float, shape=1) # for display 
-   
     
     spring_YPs=[]
     losses = []  # 损失列表
@@ -446,9 +447,8 @@ if __name__ == '__main__':  # 主函数
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
             for n in range(1, max_steps):
-                if not window.running:
-                    break    
-
+                # if not window.running:
+                #     break    
                 # if iter % (max_iter-1) == 0: #display 
                 #     if n % 10 == 1:#if n % (max_steps-1) == 0:  
                 #         if n < max_steps*0.5:
@@ -490,12 +490,12 @@ if __name__ == '__main__':  # 主函数
             
                 #init_points_t(n)
                 substep(n)  # 执行子步
-            if window.running: 
-                compute_loss(max_steps-1)
-                print('Iter=', iter, 'Loss=', loss[None])
-                print()
-                losses.append(loss[None])  # 添加损失到列表
-                spring_YPs.append(spring_YP[n_x//2,n_y//2,max_steps-2])
+            #if window.running: 
+            compute_loss(max_steps-1)
+            print('Iter=', iter, 'Loss=', loss[None])
+            print()
+            losses.append(loss[None])  # 添加损失到列表
+            spring_YPs.append(spring_YP[n_x//2,n_y//2,max_steps-2])
                 
         # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
         #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
