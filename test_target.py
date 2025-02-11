@@ -472,13 +472,13 @@ def run_windows(n):
     window.show()
 
 if __name__ == '__main__':  # 主函数
-    window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
-    canvas = window.get_canvas()
-    canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
-    scene = window.get_scene()
-    camera = ti.ui.make_camera()
+    # window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
+    # canvas = window.get_canvas()
+    # canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
+    # scene = window.get_scene()
+    # camera = ti.ui.make_camera()
 
-    transe_field_data() # for display    
+    # transe_field_data() # for display    
     
     add_field_offsets()
     add_spring_offsets()    
@@ -500,9 +500,9 @@ if __name__ == '__main__':  # 主函数
             for n in range(1, max_steps):            
                 #init_points_t(n)
                 substep(n)  # 执行子步
-                if iter % (max_iter//10) == 0: #display 
-                    if n % 10 == 1:#if n % (max_steps-1) == 0: 
-                        run_windows(n)
+                # if iter % (max_iter//10) == 0: #display 
+                #     if n % 10 == 1:#if n % (max_steps-1) == 0: 
+                #         run_windows(n)
             compute_loss(max_steps-1)
   
         learning_rate *= (1.0 - alpha)
@@ -535,7 +535,7 @@ if __name__ == '__main__':  # 主函数
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
     output_spring_para()
-    run_windows(max_steps-1)
+    #run_windows(max_steps-1)
     spring_YPs_2=[]
     for t in range(max_steps-1):        
         spring_YPs_2.append(spring_YP[t])
