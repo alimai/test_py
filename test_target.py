@@ -6,12 +6,10 @@ ti.init(arch=ti.cpu)#  # 初始化Taichi，使用CPU架构
 
 ellipse_long = 0.6  # mm,椭圆的长轴
 ellipse_short = 0.35  # mm,椭圆的短轴
-ball_center = ti.Vector.field(3, dtype=float, shape=(1, ))  # 椭圆的中心位置
-ball_center[0] = [0, 0, 0]  # 初始化
 
 n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
-tooth_size = 0.01#牙齿大小
+tooth_size = 0.01#牙齿大小基准
 
 spring_YP_base = 3e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
@@ -20,8 +18,8 @@ drag_damping_base = 1e4  # 空气阻力系数
 field_damping_base = 1e4
 
 bending_springs = True  # 是否使用弯曲弹簧
-spring_offsets = [] #弹簧偏移量---算子计算范围
-r = ti.field(ti.f32, shape=(n_x, n_y))  # 质点半径
+spring_offsets =[] #弹簧偏移量---算子计算范围
+r = ti.field(ti.f32, shape=(n_x, n_y))  # 牙齿大小
 
 #单层数据结构
 # x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
@@ -69,7 +67,7 @@ bg_size_x = ellipse_long * 2 * 1.2
 bg_quad_size = bg_size_x / bg_n[0]
 bg_size_y = bg_quad_size * bg_n[1]
 bg_size_z = bg_quad_size * bg_n[2]
-field_offset = []
+field_offset =[]
 
 ti.root.place(loss)
 ti.root.lazy_grad()
@@ -82,10 +80,10 @@ def init_field_data()->int:
     n_layers = int(0.1 / bg_quad_size)
     target_radius_long = ellipse_long / bg_quad_size
     target_radius_short = ellipse_short / bg_quad_size
-    target_center = [bg_n[0]/2-0.5, bg_n[1]/2-0.5, bg_n[2]/2-0.5]
+    target_center =[bg_n[0]/2-0.5, bg_n[1]/2-0.5, bg_n[2]/2-0.5]
     target_radius_focal = ti.sqrt(target_radius_long**2 - target_radius_short**2)
-    target_focal_top = [target_center[0], target_center[1], target_center[2]+target_radius_focal]
-    target_focal_bottom = [target_center[0], target_center[1], target_center[2]-target_radius_focal]
+    target_focal_top =[target_center[0], target_center[1], target_center[2]+target_radius_focal]
+    target_focal_bottom =[target_center[0], target_center[1], target_center[2]-target_radius_focal]
     for i, j, k in ti.ndrange(bg_n[0], bg_n[1], bg_n[2]):
         dist_focal = ti.sqrt((i-target_focal_top[0])**2+(k-target_focal_top[2])**2)\
         +ti.sqrt((i-target_focal_bottom[0])**2+(k-target_focal_bottom[2])**2)
@@ -119,8 +117,8 @@ def transe_field_data():
     #for i, j, k in pixel:#无法串行化
     for i, j, k in ti.ndrange(bg_n[0], bg_n[1], bg_n[2]):
         if j == ti.ceil(bg_n[1]/2) and k > bg_n[2]/2-0.5:#只绘制上半部分
-            if ti.is_active(voxels, [i,j,k]): 
-                field1_index[bg_n_tmp] = [i*bg_quad_size-bg_size_x*0.5,
+            if ti.is_active(voxels,[i,j,k]): 
+                field1_index[bg_n_tmp] =[i*bg_quad_size-bg_size_x*0.5,
                                             j*bg_quad_size-bg_size_y*0.5,
                                             k*bg_quad_size-bg_size_z*0.5]
                 bg_n_tmp += 1
@@ -234,7 +232,7 @@ def initialize_mass_points(t: ti.i32):
     index_center_x = 7.5
     for i, j in ti.ndrange(n_x, n_y):# 初始化质点位置
         random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.03 #ti.Vector([0.01,0.01,0.01]) # 随机偏移量
-        x[i, j, t] = [
+        x[i, j, t] =[
             i * quad_size - size_x * 0.5 + 0.5 * quad_size,
             j * quad_size - size_y * 0.5 + 0.5 * quad_size,
             0.0
@@ -243,7 +241,7 @@ def initialize_mass_points(t: ti.i32):
         x[i, j, t][2] = ellipse_long * 1.01 * (1-(x[i, j, t][0]/(ellipse_short*1.01))**2)**0.5#定义椭圆
         if i!=0 and i!=n_x-1:#固定两端
             x[i, j, t] += random_offset  # 添加随机偏移量
-        v[i, j, t] = [0, 0, 0]  # 初始化质点速度
+        v[i, j, t] =[0, 0, 0]  # 初始化质点速度
         r[i, j] = tooth_size #初始化半径
         if abs(i - index_center_x)  > 2:
             r[i,j] += tooth_size * 0.5
@@ -379,7 +377,7 @@ def cal_force_and_update_xv(t: ti.i32):
         if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
             if n[0]!=0 and n[0]!=n_x-1:#固定两端 
                 if (n[0] -force_max_min_index[0]) * (n[0] -force_max_min_index[1]) < 0:
-                    index_bias = [1,0,0] if force_max_min_index[0] > force_max_min_index[1] else [-1,0,0]
+                    index_bias =[1,0,0] if force_max_min_index[0] > force_max_min_index[1] else[-1,0,0]
                     m = n+index_bias
                     direct_mn = (x[n]-x[m]).normalized()
                     if dist_max_min[0] > 0:
@@ -455,8 +453,8 @@ def run_windows(n):
     scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
     scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
     for i in range(4):
-        point[0] = [0.0, 0.0, 0.0]
-        color = [0.0, 0.0, 0.0]
+        point[0] =[0.0, 0.0, 0.0]
+        color =[0.0, 0.0, 0.0]
         if i < 3:
             point[0][i] = 0.05
             color[i] = 1.0
@@ -492,8 +490,8 @@ if __name__ == '__main__':  # 主函数
 
     
     spring_YPs=[]
-    losses = []  # 损失列表
-    max_iter = 10000 # 最大迭代次数
+    losses =[]  # 损失列表
+    max_iter = 3000 # 最大迭代次数
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
         with ti.ad.Tape(loss):  # 使用自动微分
@@ -511,20 +509,13 @@ if __name__ == '__main__':  # 主函数
         spring_YPs.append(spring_YP[max_steps-2])         
 
         print('Iter=', iter, 'Loss=', loss[None])
-        # print(spring_YP.grad[n_x//2,n_y//2,0], spring_YN.grad[n_x//2,n_y//2,0],\
-        #        dashpot_damping.grad[n_x//2,n_y//2,0], drag_damping.grad[n_x//2,n_y//2,0])
-        # print(spring_YP.grad[n_x//2,n_y//2,1], spring_YN.grad[n_x//2,n_y//2,1],\
-        #        dashpot_damping.grad[n_x//2,n_y//2,1], drag_damping.grad[n_x//2,n_y//2,1])
-        # print(spring_YP.grad[n_x//2,n_y//2,max_steps-1], spring_YN.grad[n_x//2,n_y//2,max_steps-1], \
-        #       dashpot_damping.grad[n_x//2,n_y//2,max_steps-1], drag_damping.grad[n_x//2,n_y//2,max_steps-1])
-        # print(spring_YP.grad[n_x//2,n_y//2,0], spring_YP.grad[n_x//2,n_y//2,1], \
-        #       spring_YP.grad[n_x//2,n_y//2,max_steps-2], spring_YP.grad[n_x//2,n_y//2,max_steps-1])
-        # print(spring_YP[n_x//2,n_y//2,0], spring_YN[n_x//2,n_y//2,0], \
-        #       dashpot_damping[n_x//2,n_y//2,0], drag_damping[n_x//2,n_y//2,0])
-        # print(spring_YP[n_x//2,n_y//2,1], spring_YN[n_x//2,n_y//2,1], \
-        #       dashpot_damping[n_x//2,n_y//2,1], drag_damping[n_x//2,n_y//2,1])
-        # print(spring_YP[n_x//2,n_y//2,max_steps-1], spring_YN[n_x//2,n_y//2,max_steps-1], \
-        #       dashpot_damping[n_x//2,n_y//2,max_steps-1], drag_damping[n_x//2,n_y//2,max_steps-1])
+        # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
+        # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
+        # print(spring_YP.grad[max_steps-1], spring_YN.grad[max_steps-1], dashpot_damping.grad[max_steps-1], drag_damping.grad[max_steps-1])
+        # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
+        # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
+        # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
+        # print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
         print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
         print()
 
