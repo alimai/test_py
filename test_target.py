@@ -357,15 +357,14 @@ def cal_force_and_update_xv(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core        
         index = ti.Vector([i, j, t])
         n = ti.Vector([i, j, t-1])
-        x[index] = (x[n]+dt * v[index]) 
-        # #添加残差连接        
-        # if t > 1 and t%20==1:
-        #     x[index] = (x[n]+dt * v[index])*0.5
-        #     n_b = index
-        #     n_b[2] -= 21
-        #     x[index] += x[n_b] * 0.5      
-        # else:
-        #     x[index] = (x[n]+dt * v[index])  
+        #x[index] = (x[n] + dt * v[index]) 
+        #添加残差连接        
+        if t > 20:# and t%20==1:
+            n_b = n
+            n_b[2] -= 20
+            x[index] = (x[n] + dt * v[index] + x[n_b])*0.5
+        else:
+            x[index] = (x[n] + dt * v[index])  
 
 
 def substep(t):
