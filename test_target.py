@@ -187,10 +187,10 @@ def update_spring_para():
     #print("adj_ratio", adj_ratio)
     for i, j, t in x:
         #if t>=max_steps-2:
-            spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
-            spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
-            dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
-            drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
+            spring_YP[i,j, t] += -learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
+            spring_YN[i,j, t] += -learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
+            dashpot_damping[i,j, t] += -learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
+            drag_damping[i,j, t] += -learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
     
     # for t in ti.ndrange(max_steps):        
     #     sum_grad = 0.0
