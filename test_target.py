@@ -4,8 +4,27 @@ import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 ti.init(arch=ti.cpu, debug=True)#  # 初始化Taichi，使用CPU架构
 
+#场量
 ellipse_long = 0.6  # mm,椭圆的长轴
 ellipse_short = 0.35  # mm,椭圆的短轴
+r_level0 = 0.75 #网格数
+r_level1 = 1.1 #网格数，+1.1>1.0防止数值误差
+
+block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
+block2 = block1.pointer(ti.ijk, (8, 4, 8))
+voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
+
+field1 = ti.field(ti.f32)
+field2 = ti.field(ti.f32)
+voxels.place(field1, field2)#, field_damping)
+
+bg_n = voxels.shape
+bg_size_x = ellipse_long * 2 * 1.2
+bg_quad_size = bg_size_x / bg_n[0]
+bg_size_y = bg_quad_size * bg_n[1]
+bg_size_z = bg_quad_size * bg_n[2]
+field_offset =[]
+
 
 n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
@@ -48,26 +67,6 @@ v = vec()
 f = vec()
 l = vec() #location in field
 lay2.place(x, v, f, l)
-
-
-#场量
-r_level0 = 0.75 #网格数
-r_level1 = 1.1 #网格数，+1.1>1.0防止数值误差
-
-block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
-block2 = block1.pointer(ti.ijk, (8, 4, 8))
-voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
-
-field1 = ti.field(ti.f32)
-field2 = ti.field(ti.f32)
-voxels.place(field1, field2)#, field_damping)
-
-bg_n = voxels.shape
-bg_size_x = ellipse_long * 2 * 1.2
-bg_quad_size = bg_size_x / bg_n[0]
-bg_size_y = bg_quad_size * bg_n[1]
-bg_size_z = bg_quad_size * bg_n[2]
-field_offset =[]
 
 ti.root.place(loss, drag_damping)
 ti.root.lazy_grad()
@@ -384,7 +383,7 @@ def calcute_loss_dist(t: ti.i32, j: ti.i32):
         avg_bias += list_dist[i]
     avg_bias /= (n_x-1)
     for i in ti.static(range(n_x-1)):
-        loss[None] += abs(list_dist[i]-avg_bias)*1e5
+        loss[None] += abs(list_dist[i]-avg_bias)*2e5
 @ti.kernel
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
@@ -449,7 +448,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数  
 
-    max_iter = 10# 最大迭代次数  
+    max_iter = 100# 最大迭代次数  
     window = None    
     transe_field_data() # for display
 
