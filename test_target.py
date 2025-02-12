@@ -2,7 +2,7 @@ import numpy as np
 import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
-ti.init(arch=ti.cpu)#  # 初始化Taichi，使用CPU架构
+ti.init(arch=ti.cpu, debug=True)#  # 初始化Taichi，使用CPU架构
 
 ellipse_long = 0.6  # mm,椭圆的长轴
 ellipse_short = 0.35  # mm,椭圆的短轴
@@ -11,7 +11,7 @@ n_x = 15  # 控制点行数
 n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小基准
 
-spring_YP_base = 1e5  #1.2e6 # 引力系数--长度相关
+spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
 drag_damping_base = 1.0  # 空气阻力系数
@@ -62,7 +62,7 @@ field1 = ti.field(ti.f32)
 field2 = ti.field(ti.f32)
 voxels.place(field1, field2)#, field_damping)
 
-bg_n = ti.Vector(voxels.shape)
+bg_n = voxels.shape
 bg_size_x = ellipse_long * 2 * 1.2
 bg_quad_size = bg_size_x / bg_n[0]
 bg_size_y = bg_quad_size * bg_n[1]
@@ -114,7 +114,7 @@ field1_index = ti.Vector.field(3, dtype=float, shape=bg_n_act)
 def transe_field_data():
     bg_n_tmp=0
     ti.loop_config(serialize=True)
-    #for i, j, k in pixel:#无法串行化
+    #for i, j, k in voxels:#无法串行化
     for i, j, k in ti.ndrange(bg_n[0], bg_n[1], bg_n[2]):
         if j == ti.ceil(bg_n[1]/2) and k > bg_n[2]/2-0.5:#只绘制上半部分
             if ti.is_active(voxels,[i,j,k]): 
@@ -122,7 +122,7 @@ def transe_field_data():
                                             j*bg_quad_size-bg_size_y*0.5,
                                             k*bg_quad_size-bg_size_z*0.5]
                 bg_n_tmp += 1
-    assert(bg_n_act == bg_n_tmp)
+    #assert(bg_n_act == bg_n_tmp)#全部绘制时相等
 
 def add_field_offsets():
         for i in range(-1, 2):
@@ -138,7 +138,7 @@ def output_spring_para():
     s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy(), drag_damping.to_numpy()])
     np.save('spring_para.npy', s_para)
 def load_spring_para():
-    #return False
+    return False
     try:
         s_para = np.load('spring_para.npy')
     except FileNotFoundError:
@@ -165,46 +165,6 @@ def initialize_spring_para2():
         spring_YN[t] = spring_YN_base  
         dashpot_damping[t] = dashpot_damping_base  
         drag_damping[t] = drag_damping_base 
-
-
-@ti.kernel
-def update_spring_para():
-    # adj_ratio = 1/((abs(spring_YP.grad[None])+abs(spring_YN.grad[None])+\
-    #                         abs(dashpot_damping.grad[None])+1e-5)*max_iter)#+abs(drag_damping.grad[None])
-    # spring_YP[None] -= learning_rate * spring_YP.grad[None] * spring_YP[None]*adj_ratio
-    # spring_YN[None] -= learning_rate * spring_YN.grad[None] * spring_YN[None]*adj_ratio
-    # dashpot_damping[None] -= learning_rate * dashpot_damping.grad[None] * dashpot_damping[None]*adj_ratio
-    # #drag_damping[None] -= learning_rate * drag_damping.grad[None] * drag_damping[None]*adj_ratio
-    # print(adj_ratio)
-
-    sum_grad = 0.0
-    for i, j, t in x:
-        sum_grad += abs(spring_YP.grad[i,j, t])
-        sum_grad += abs(spring_YN.grad[i,j, t])
-        sum_grad += abs(dashpot_damping.grad[i,j, t])
-        sum_grad += abs(drag_damping.grad[i,j, t])
-    adj_ratio = max_steps / (sum_grad+1e-5)
-    #print("adj_ratio", adj_ratio)
-    for i, j, t in x:
-        #if t>=max_steps-2:
-            spring_YP[i,j, t] += -learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
-            spring_YN[i,j, t] += -learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
-            dashpot_damping[i,j, t] += -learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
-            drag_damping[i,j, t] += -learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
-    
-    # for t in ti.ndrange(max_steps):        
-    #     sum_grad = 0.0
-    #     for i, j in ti.ndrange(n_x, n_y):
-    #         sum_grad += abs(spring_YP.grad[i,j, t])
-    #         sum_grad += abs(spring_YN.grad[i,j, t])
-    #         sum_grad += abs(dashpot_damping.grad[i,j, t])
-    #         sum_grad += abs(drag_damping.grad[i,j, t])
-    #     adj_ratio = 1 / (sum_grad+1e-5)
-    #     for i, j in ti.ndrange(n_x, n_y):
-    #         spring_YP[i,j, t] -= learning_rate * spring_YP.grad[i,j, t] * spring_YP[i,j, t]*adj_ratio
-    #         spring_YN[i,j, t] -= learning_rate * spring_YN.grad[i,j, t] * spring_YN[i,j, t]*adj_ratio
-    #         dashpot_damping[i,j, t] -= learning_rate * dashpot_damping.grad[i,j, t] * dashpot_damping[i,j, t]*adj_ratio
-    #         drag_damping[i,j, t]-= learning_rate * drag_damping.grad[i,j, t] * drag_damping[i,j, t]*adj_ratio
 
 @ti.kernel
 def update_spring_para2():
@@ -411,13 +371,11 @@ def substep(t):
     cal_force_and_update_xv(t)
 
 @ti.kernel
-def calcute_loss_dist(t: ti.i32, j: ti.i32):    
+def calcute_loss_dist(t: ti.i32, j: ti.i32): 
+    avg_bias = 0.0       
     list_dist = ti.Vector([0.0] * (n_x-1))
-    total_length = 0.0
-    avg_bias = 0.0    
     for i in ti.static(range(n_x-1)):
         list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
-        total_length += (x[i, j, t] - x[i+1, j, t]).norm()
         avg_bias += list_dist[i]
     avg_bias /= (n_x-1)
     for i in ti.static(range(n_x-1)):
@@ -486,7 +444,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数  
 
-    max_iter = 3000# 最大迭代次数  
+    max_iter = 3# 最大迭代次数  
     window = None    
     transe_field_data() # for display
 
@@ -497,7 +455,7 @@ if __name__ == '__main__':  # 主函数
         initialize_spring_para2()
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
-    print(spring_YP[max_steps-2], spring_YN[max_steps-2], dashpot_damping[max_steps-2], drag_damping[max_steps-2])
+    print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
 
     
@@ -505,7 +463,7 @@ if __name__ == '__main__':  # 主函数
     losses =[]  # 损失列表
     for iter in range(max_iter):#while window.running:
         initialize_mass_points(0)
-        with ti.ad.Tape(loss):  # 使用自动微分
+        with ti.ad.Tape(loss=loss, validation=True): # 使用自动微分
             for n in range(1, max_steps):            
                 #init_points_t(n)
                 substep(n)  # 执行子步
@@ -522,18 +480,18 @@ if __name__ == '__main__':  # 主函数
         print('Iter=', iter, 'Loss=', loss[None])
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
-        print(spring_YP.grad[max_steps-2], spring_YN.grad[max_steps-2], dashpot_damping.grad[max_steps-2], drag_damping.grad[max_steps-2])
+        print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2], drag_damping.grad[max_steps//2])
         # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
         # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
         # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
-        print(spring_YP[max_steps-2], spring_YN[max_steps-2], dashpot_damping[max_steps-2], drag_damping[max_steps-2])
+        print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
         #print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
         print()
 
     
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
-    print(spring_YP[max_steps-2], spring_YN[max_steps-2], dashpot_damping[max_steps-2], drag_damping[max_steps-2])
+    print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
     output_spring_para()
