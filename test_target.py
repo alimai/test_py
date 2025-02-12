@@ -14,7 +14,7 @@ tooth_size = 0.01#牙齿大小基准
 spring_YP_base = 1e5  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
-drag_damping_base = 0.5  # 空气阻力系数
+drag_damping_base = 1.0  # 空气阻力系数
 field_damping_base = 1e4
 
 bending_springs = True  # 是否使用弯曲弹簧
@@ -226,10 +226,10 @@ def update_spring_para2():
             if abs(spring_YN_ratio) > 10 : spring_YN_ratio = 10 * spring_YN_ratio / abs(spring_YN_ratio)
             if abs(dashpot_damping_ratio) > 10 : dashpot_damping_ratio = 10 * dashpot_damping_ratio / abs(dashpot_damping_ratio)
             if abs(drag_damping_ratio) > 10 : drag_damping_ratio = 10 * drag_damping_ratio / abs(drag_damping_ratio)
-            spring_YP[t] += -learning_rate * spring_YP_base * spring_YP_ratio
-            spring_YN[t] += -learning_rate * spring_YN_base * spring_YN_ratio
-            dashpot_damping[t] += -learning_rate * dashpot_damping_base * dashpot_damping_ratio
-            drag_damping[t] += -learning_rate * drag_damping_base * drag_damping_ratio
+            spring_YP[t] += -learning_rate * spring_YP[t] * spring_YP_ratio
+            spring_YN[t] += -learning_rate * spring_YN[t] * spring_YN_ratio
+            dashpot_damping[t] += -learning_rate * dashpot_damping[t] * dashpot_damping_ratio
+            drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
     
 
 @ti.kernel
@@ -381,7 +381,7 @@ def cal_force_and_update_xv(t: ti.i32):
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             #v[n] = force * dt# 更新速度
             #v[index] += force * dt  # 更新速度
-            v[index] = (v[n] + f[index] * dt) * drag_damping[t-1]  # 更新速度并施加空气阻力
+            v[index] = (v[n] + f[index] * dt) / (1.0+drag_damping[t-1])  # 更新速度并施加空气阻力
             #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
             # # 碰撞检测
             # offset_to_center = x[n] - ball_center[0]
@@ -430,11 +430,7 @@ def calcute_loss_x(t: ti.i32, j: ti.i32):
 @ti.kernel
 def calcute_loss_v(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss[None] += v[i,j,t].norm()
-@ti.kernel
-def calcute_loss_f(t: ti.i32, j: ti.i32):
-    for i in ti.ndrange(n_x):
-        loss[None] += f[i,j,t].norm()*1e-2
+        loss[None] += v[i,j,t].norm()*1e0
 
 def compute_loss(t):
     loss[None] = 0.0
@@ -446,8 +442,6 @@ def compute_loss(t):
     print(loss[None])
     calcute_loss_v(t,j)    
     print(loss[None])
-    # calcute_loss_f(t,j)    
-    # print(loss[None])
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
 def run_windows(window, n, keep = False):
@@ -492,7 +486,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数  
 
-    max_iter = 1000# 最大迭代次数  
+    max_iter = 3000# 最大迭代次数  
     window = None    
     transe_field_data() # for display
 
@@ -523,7 +517,7 @@ if __name__ == '__main__':  # 主函数
         learning_rate *= (1.0 - alpha)
         update_spring_para2()        
         losses.append(loss[None])  # 添加损失到列表
-        spring_YPs.append(spring_YP[max_steps-2])         
+        spring_YPs.append(spring_YP[max_steps//2])         
 
         print('Iter=', iter, 'Loss=', loss[None])
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
@@ -533,7 +527,7 @@ if __name__ == '__main__':  # 主函数
         # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
         # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
         print(spring_YP[max_steps-2], spring_YN[max_steps-2], dashpot_damping[max_steps-2], drag_damping[max_steps-2])
-        print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
+        #print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
         print()
 
     
