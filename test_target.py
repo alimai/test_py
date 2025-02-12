@@ -176,7 +176,7 @@ def update_spring_para2(iter: int):
         #sum_grad += abs(drag_damping.grad[t])
 
     adj_ratio = 1.0
-    if iter < max_steps//2 and sum_grad < 1.0:
+    if iter < 5000 and sum_grad < 1.0:
         adj_ratio = 1.0 / (sum_grad+1e-5)    
     print("adj_ratio", adj_ratio, sum_grad)
 
