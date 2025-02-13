@@ -56,7 +56,6 @@ r = ti.field(dtype=ti.f32, shape=(n_x, n_y))  # 牙齿大小
 # x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
 # v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
 
-loss = scalar()
 spring_YP= scalar()  # 引力系数--长度相关
 spring_YN = scalar()  # 斥力系数--长度相关
 dashpot_damping = scalar()  # 阻尼系数--速度差相关
@@ -72,7 +71,11 @@ f = vec()
 l = vec() #location in field
 lay2.place(x, v, f, l)
 
+
+loss = scalar()
+loss_step = scalar()
 ti.root.place(loss)
+lay1.place(loss_step)
 ti.root.lazy_grad()
 #lay1.lazy_grad()
 #lay2.lazy_grad()
@@ -386,27 +389,32 @@ def calcute_loss_dist(t: ti.i32, j: ti.i32):
         avg_bias += list_dist[i]
     avg_bias /= (n_x-1)
     for i in ti.static(range(n_x-1)):
-        loss[None] += abs(list_dist[i]-avg_bias)*2e5
+        loss_step[t] += abs(list_dist[i]-avg_bias)*2e5
 @ti.kernel
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss[None] += l[i,j,t].norm()*1e2
+        loss_step[t] += l[i,j,t].norm()*1e2
         # print(i, x[i,j,100], l[i,j,20])
 @ti.kernel
 def calcute_loss_v(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss[None] += v[i,j,t].norm()*1e0
+        loss_step[t] += v[i,j,t].norm()*1e0        
+@ti.kernel
+def add_loss_step(t: ti.i32):
+    loss[None] += loss_step[t] * t
+
 
 def compute_loss(t):
-    loss[None] = 0.0
+    loss_step[t] = 0.0
     j = n_y//2
-    print("0:",loss[None])
+    #print("0:",loss[None])
     calcute_loss_dist(t,j)#,total_dist,list_dist) 
-    print(loss[None])
+    #print(loss[None])
     calcute_loss_x(t,j) 
-    print(loss[None])
+    #print(loss[None])
     calcute_loss_v(t,j)    
-    print(loss[None])
+    #print(loss[None])
+    add_loss_step(t)
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
 def run_windows(window, n, keep = False):
@@ -469,6 +477,7 @@ if __name__ == '__main__':  # 主函数
     spring_YPs=[]
     losses =[]  # 损失列表
     for iter in range(max_iter):#while window.running:
+        loss[None] = 0.0
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=True): # 使用自动微分
             for n in range(1, max_steps):            
@@ -477,7 +486,7 @@ if __name__ == '__main__':  # 主函数
                 # if iter % (max_iter//10) == 0: #display 
                 #     if n % 10 == 1:#if n % (max_steps-1) == 0: 
                 #         run_windows(window, n)
-            compute_loss(max_steps-1)
+                compute_loss(n)
   
         learning_rate *= (1.0 - alpha)
         update_spring_para2(iter)        
