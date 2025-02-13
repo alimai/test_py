@@ -181,7 +181,7 @@ def update_spring_para2(iter: int):
         sum_grad += abs(spring_YP.grad[t])
         sum_grad += abs(spring_YN.grad[t])
         sum_grad += abs(dashpot_damping.grad[t])
-        #sum_grad += abs(drag_damping.grad[t])
+        sum_grad += abs(drag_damping.grad[t])
 
     adj_ratio = 1.0
     if iter < 5000 and sum_grad < 1.0:
@@ -193,15 +193,15 @@ def update_spring_para2(iter: int):
             spring_YP_ratio = spring_YP.grad[t] * adj_ratio
             spring_YN_ratio = spring_YN.grad[t] * adj_ratio
             dashpot_damping_ratio = dashpot_damping.grad[t] * adj_ratio
-            #drag_damping_ratio = drag_damping.grad[t] * adj_ratio
+            drag_damping_ratio = drag_damping.grad[t] * adj_ratio
             if abs(spring_YP_ratio) > 10 : spring_YP_ratio = 10 * spring_YP_ratio / abs(spring_YP_ratio)
             if abs(spring_YN_ratio) > 10 : spring_YN_ratio = 10 * spring_YN_ratio / abs(spring_YN_ratio)
             if abs(dashpot_damping_ratio) > 10 : dashpot_damping_ratio = 10 * dashpot_damping_ratio / abs(dashpot_damping_ratio)
-            #if abs(drag_damping_ratio) > 10 : drag_damping_ratio = 10 * drag_damping_ratio / abs(drag_damping_ratio)
+            if abs(drag_damping_ratio) > 10 : drag_damping_ratio = 10 * drag_damping_ratio / abs(drag_damping_ratio)
             spring_YP[t] += -learning_rate * spring_YP[t] * spring_YP_ratio
             spring_YN[t] += -learning_rate * spring_YN[t] * spring_YN_ratio
             dashpot_damping[t] += -learning_rate * dashpot_damping[t] * dashpot_damping_ratio
-            #drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
+            drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
     
 
 @ti.kernel
@@ -463,23 +463,24 @@ def run_windows(window, n, keep = False):
         input()
 
 if __name__ == '__main__':  # 主函数 
+
+    max_iter = 100# 最大迭代次数 
+    transe_field_data() # for display
+
     window = None      
     disp_by_step = False
     if not TEST_MODE and disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
-
-    max_iter = 100# 最大迭代次数 
-    transe_field_data() # for display
 
     add_field_offsets()
     add_spring_offsets()    
     field_damping[None] = field_damping_base
     if not load_spring_para():
         initialize_spring_para2()
-    print(spring_YP[0], spring_YN[0], dashpot_damping[0])#, drag_damping[0])
-    print(spring_YP[1], spring_YN[1], dashpot_damping[1])#, drag_damping[1])
-    print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2])#, drag_damping[max_steps//2])
-    print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1])#, drag_damping[max_steps-1])
+    print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
+    print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
+    print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
+    print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
 
     
     spring_YPs=[]
@@ -510,14 +511,14 @@ if __name__ == '__main__':  # 主函数
         # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
         # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
         # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
-        print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2])#, drag_damping[max_steps//2])
+        print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
         #print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
 
     
-    print(spring_YP[0], spring_YN[0], dashpot_damping[0])#, drag_damping[0])
-    print(spring_YP[1], spring_YN[1], dashpot_damping[1])#, drag_damping[1])
-    print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2])#, drag_damping[max_steps//2])
-    print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1])#, drag_damping[max_steps-1])
+    print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
+    print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
+    print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
+    print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
     output_spring_para()
     run_windows(window, max_steps-1, keep = True)
