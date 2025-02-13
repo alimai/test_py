@@ -2,7 +2,9 @@ import numpy as np
 import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
-ti.init(arch=ti.cpu, debug=True)#  # 初始化Taichi，使用CPU架构
+
+TEST_MODE = False#True#
+ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -12,7 +14,7 @@ drag_damping_base = 1.0  # 空气阻力系数
 field_damping_base = 1e4
 
 dt = 1e-4  # 时间步长
-alpha = 1e-8  # 学习率衰减
+alpha = 1e-4  # 学习率衰减
 learning_rate = 1e-4  # 学习率
 
 #分层数据结构
@@ -184,7 +186,7 @@ def update_spring_para2(iter: int):
     adj_ratio = 1.0
     if iter < 5000 and sum_grad < 1.0:
         adj_ratio = 1.0 / (sum_grad+1e-5)    
-    print("adj_ratio", adj_ratio, sum_grad)
+    #print("adj_ratio", adj_ratio, sum_grad)
 
     for t in ti.ndrange(max_steps):
         #if t>=max_steps-2:
@@ -389,16 +391,16 @@ def calcute_loss_dist(t: ti.i32, j: ti.i32):
         avg_bias += list_dist[i]
     avg_bias /= (n_x-1)
     for i in ti.static(range(n_x-1)):
-        loss_step[t] += abs(list_dist[i]-avg_bias)*2e5
+        loss_step[t] += abs(list_dist[i]-avg_bias)*1e4
 @ti.kernel
 def calcute_loss_x(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss_step[t] += l[i,j,t].norm()*1e2
+        loss_step[t] += l[i,j,t].norm()*1e1
         # print(i, x[i,j,100], l[i,j,20])
 @ti.kernel
 def calcute_loss_v(t: ti.i32, j: ti.i32):
     for i in ti.ndrange(n_x):
-        loss_step[t] += v[i,j,t].norm()*1e0        
+        loss_step[t] += v[i,j,t].norm()*1e1        
 @ti.kernel
 def add_loss_step(t: ti.i32):
     loss[None] += loss_step[t] * t
@@ -406,24 +408,27 @@ def add_loss_step(t: ti.i32):
 
 def compute_loss(t):
     loss_step[t] = 0.0
+
     j = n_y//2
-    #print("0:",loss[None])
-    calcute_loss_dist(t,j)#,total_dist,list_dist) 
-    #print(loss[None])
+    loss_parts = [0.0, 0.0, 0.0]
+    calcute_loss_dist(t,j)
+    loss_parts[0] = loss_step[t]
     calcute_loss_x(t,j) 
-    #print(loss[None])
-    calcute_loss_v(t,j)    
-    #print(loss[None])
+    loss_parts[1] = loss_step[t]
+    calcute_loss_v(t,j) 
+    loss_parts[2] = loss_step[t]   
     add_loss_step(t)
+    if t==1 or t == max_steps - 1:
+        print(loss_parts)
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
 def run_windows(window, n, keep = False):
     if window is None:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
-        canvas = window.get_canvas()
-        canvas.set_background_color((0.5, 0.5, 0.5))  # 设置背景颜色
-        scene = window.get_scene()
-        camera = ti.ui.make_camera()
+    canvas = window.get_canvas()
+    canvas.set_background_color((0.3, 0.3, 0.3))  # 设置背景颜色
+    scene = window.get_scene()
+    camera = ti.ui.make_camera()
 
     if n < max_steps*0.5:
         camera.position(0.0, 2.0, 0.0)  # 设置相机位置
@@ -457,10 +462,13 @@ def run_windows(window, n, keep = False):
     if keep:
         input()
 
-if __name__ == '__main__':  # 主函数  
+if __name__ == '__main__':  # 主函数 
+    window = None      
+    disp_by_step = False
+    if not TEST_MODE and disp_by_step:
+        window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
-    max_iter = 100# 最大迭代次数  
-    window = None    
+    max_iter = 100# 最大迭代次数 
     transe_field_data() # for display
 
     add_field_offsets()
@@ -477,15 +485,17 @@ if __name__ == '__main__':  # 主函数
     spring_YPs=[]
     losses =[]  # 损失列表
     for iter in range(max_iter):#while window.running:
+        print('\nIter=', iter)
         loss[None] = 0.0
         initialize_mass_points(0)
-        with ti.ad.Tape(loss=loss, validation=True): # 使用自动微分
+        with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
             for n in range(1, max_steps):            
                 #init_points_t(n)
                 substep(n)  # 执行子步
-                # if iter % (max_iter//10) == 0: #display 
-                #     if n % 10 == 1:#if n % (max_steps-1) == 0: 
-                #         run_windows(window, n)
+                if not TEST_MODE and disp_by_step:
+                    if iter % (max_iter//10) == 0: #display 
+                        if n % 10 == 1:#if n % (max_steps-1) == 0: 
+                            run_windows(window, n)
                 compute_loss(n)
   
         learning_rate *= (1.0 - alpha)
@@ -493,16 +503,15 @@ if __name__ == '__main__':  # 主函数
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
 
-        print('Iter=', iter, 'Loss=', loss[None])
+        print('Loss=', loss[None])
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
-        print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
+        #print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
         # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
         # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
         # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
         print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2])#, drag_damping[max_steps//2])
         #print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
-        print()
 
     
     print(spring_YP[0], spring_YN[0], dashpot_damping[0])#, drag_damping[0])
