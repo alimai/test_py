@@ -4,32 +4,7 @@ import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 ti.init(arch=ti.cpu, debug=True)#  # 初始化Taichi，使用CPU架构
 
-#场量
-ellipse_long = 0.6  # mm,椭圆的长轴
-ellipse_short = 0.35  # mm,椭圆的短轴
-r_level0 = 0.75 #网格数
-r_level1 = 1.1 #网格数，+1.1>1.0防止数值误差
-
-block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
-block2 = block1.pointer(ti.ijk, (8, 4, 8))
-voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
-
-field1 = ti.field(ti.f32)
-field2 = ti.field(ti.f32)
-voxels.place(field1, field2)#, field_damping)
-
-bg_n = voxels.shape
-bg_size_x = ellipse_long * 2 * 1.2
-bg_quad_size = bg_size_x / bg_n[0]
-bg_size_y = bg_quad_size * bg_n[1]
-bg_size_z = bg_quad_size * bg_n[2]
-field_offset =[]
-
-
-n_x = 15  # 控制点行数
-n_y = 3  # 控制点列数
-tooth_size = 0.01#牙齿大小基准
-
+#<<<<<初始量>>>>>
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
@@ -40,23 +15,52 @@ dt = 1e-4  # 时间步长
 alpha = 1e-8  # 学习率衰减
 learning_rate = 1e-4  # 学习率
 
+#分层数据结构
+scalar = lambda: ti.field(dtype=ti.f32)  # 标量字段，用于place放入taichi分层数据中
+vec = lambda: ti.Vector.field(3, dtype=ti.f32)  # 向量字段，用于place放入taichi分层数据中
+
+
+#<<<<<场量>>>>>
+ellipse_long = 0.6  # mm,椭圆的长轴
+ellipse_short = 0.35  # mm,椭圆的短轴
+r_level0 = 0.75 #网格数
+r_level1 = 1.1 #网格数，+1.1>1.0防止数值误差
+field_damping = ti.field(dtype=ti.f32, shape=())#scalar()
+
+block1 = ti.root.pointer(ti.ijk, (8, 4, 8))
+block2 = block1.pointer(ti.ijk, (8, 4, 8))
+voxels = block2.bitmasked(ti.ijk, (8, 4, 8))
+
+field1 = scalar()#ti.field(dtype=ti.f32)
+field2 = scalar()#ti.field(dtype=ti.f32)
+voxels.place(field1, field2)#, field_damping)
+
+bg_n = voxels.shape
+bg_size_x = ellipse_long * 2 * 1.2
+bg_quad_size = bg_size_x / bg_n[0]
+bg_size_y = bg_quad_size * bg_n[1]
+bg_size_z = bg_quad_size * bg_n[2]
+field_offset =[]
+
+#<<<<<牙齿量>>>>>
+n_x = 15  # 控制点行数
+n_y = 3  # 控制点列数
+tooth_size = 0.01#牙齿大小基准
+
+
 bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets =[] #弹簧偏移量---算子计算范围
-r = ti.field(ti.f32, shape=(n_x, n_y))  # 牙齿大小
+r = ti.field(dtype=ti.f32, shape=(n_x, n_y))  # 牙齿大小
 
 #单层数据结构
 # x = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点位置
 # v = ti.Vector.field(3, dtype=float, shape=(n_x, n_y))  # 质点速度
-#分层数据结构
-scalar = lambda: ti.field(dtype=ti.f32)  # 标量字段，用于place放入taichi分层数据中
-vec = lambda: ti.Vector.field(3, dtype=ti.f32)  # 向量字段，用于place放入taichi分层数据中
 
 loss = scalar()
 spring_YP= scalar()  # 引力系数--长度相关
 spring_YN = scalar()  # 斥力系数--长度相关
 dashpot_damping = scalar()  # 阻尼系数--速度差相关
 drag_damping = scalar()  # 空气阻力系数
-field_damping = ti.field(ti.f32, shape=())#scalar()
 
 max_steps = 512#1024
 lay1 = ti.root.dense(ti.k, max_steps)
