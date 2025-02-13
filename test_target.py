@@ -60,7 +60,7 @@ field_damping = ti.field(ti.f32, shape=())#scalar()
 
 max_steps = 512#1024
 lay1 = ti.root.dense(ti.k, max_steps)
-lay1.place(spring_YP, spring_YN, dashpot_damping)#, drag_damping)
+lay1.place(spring_YP, spring_YN, dashpot_damping, drag_damping)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
 x = vec()
 v = vec()
@@ -68,11 +68,10 @@ f = vec()
 l = vec() #location in field
 lay2.place(x, v, f, l)
 
-ti.root.place(loss, drag_damping)
+ti.root.place(loss)
 ti.root.lazy_grad()
 #lay1.lazy_grad()
 #lay2.lazy_grad()
-drag_damping[None] = drag_damping_base 
 
 @ti.kernel
 def init_field_data()->int:
@@ -135,7 +134,7 @@ def add_field_offsets():
 
 
 def output_spring_para():
-    s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy()])#, drag_damping.to_numpy()])
+    s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy(), drag_damping.to_numpy()])
     np.save('spring_para.npy', s_para)
 def load_spring_para():
     #return False
@@ -147,7 +146,7 @@ def load_spring_para():
         spring_YP.from_numpy(s_para[0])
         spring_YN.from_numpy(s_para[1])
         dashpot_damping.from_numpy(s_para[2])
-        #drag_damping.from_numpy(s_para[3])
+        drag_damping.from_numpy(s_para[3])
         return True
     else:
         return False
@@ -164,7 +163,7 @@ def initialize_spring_para2():
         spring_YP[t]= spring_YP_base  
         spring_YN[t] = spring_YN_base  
         dashpot_damping[t] = dashpot_damping_base  
-        #drag_damping[t] = drag_damping_base
+        drag_damping[t] = drag_damping_base
 
 @ti.kernel
 def update_spring_para2(iter: int):
@@ -345,7 +344,7 @@ def cal_force_and_update_xv(t: ti.i32):
         if n[0]!=0 and n[0]!=n_x-1:#固定两端
             #v[n] = force * dt# 更新速度
             #v[index] += force * dt  # 更新速度
-            v[index] = (v[n] + f[index] * dt) / (1.0+drag_damping[None])  # 更新速度并施加空气阻力
+            v[index] = (v[n] + f[index] * dt) / (1.0+drag_damping[t-1])  # 更新速度并施加空气阻力
             #v[n] += (ti.random() - 0.5)*0.1 # 添加随机扰动
             # # 碰撞检测
             # offset_to_center = x[n] - ball_center[0]
