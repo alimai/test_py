@@ -40,8 +40,7 @@ voxels.place(field1, field2)#, field_damping)
 bg_n = voxels.shape
 bg_size_x = ellipse_long * 2 * 1.2
 bg_quad_size = bg_size_x / bg_n[0]
-bg_size_y = bg_quad_size * bg_n[1]
-bg_size_z = bg_quad_size * bg_n[2]
+bg_size = ti.Vector([bg_size_x, bg_quad_size * bg_n[1], bg_quad_size * bg_n[2]])
 field_offset =[]
 
 #<<<<<牙齿量>>>>>
@@ -126,9 +125,10 @@ def transe_field_data():
     for i, j, k in ti.ndrange(bg_n[0], bg_n[1], bg_n[2]):
         if j == ti.ceil(bg_n[1]/2) and k > bg_n[2]/2-0.5:#只绘制上半部分
             if ti.is_active(voxels,[i,j,k]): 
-                field1_index[bg_n_tmp] =[i*bg_quad_size-bg_size_x*0.5,
-                                            j*bg_quad_size-bg_size_y*0.5,
-                                            k*bg_quad_size-bg_size_z*0.5]
+                field1_index[bg_n_tmp] =ti.Vector([i,j,k])*bg_quad_size - bg_size * 0.5
+                # field1_index[bg_n_tmp] =[i*bg_quad_size-bg_size_x*0.5,
+                #                             j*bg_quad_size-bg_size_y*0.5,
+                #                             k*bg_quad_size-bg_size_z*0.5]
                 bg_n_tmp += 1
     #assert(bg_n_act == bg_n_tmp)#全部绘制时相等
 
@@ -186,7 +186,7 @@ def update_spring_para2(iter: int):
     adj_ratio = 1.0
     if iter < 5000 and sum_grad < 1.0:
         adj_ratio = 1.0 / (sum_grad+1e-5)    
-    #print("adj_ratio", adj_ratio, sum_grad)
+    print("adj_ratio", adj_ratio, sum_grad)
 
     for t in ti.ndrange(max_steps):
         #if t>=max_steps-2:
@@ -201,7 +201,7 @@ def update_spring_para2(iter: int):
             spring_YP[t] += -learning_rate * spring_YP[t] * spring_YP_ratio
             spring_YN[t] += -learning_rate * spring_YN[t] * spring_YN_ratio
             dashpot_damping[t] += -learning_rate * dashpot_damping[t] * dashpot_damping_ratio
-            drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
+            #drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
     
 
 @ti.kernel
@@ -297,9 +297,7 @@ def cal_force_and_update_xv(t: ti.i32):
                         dist_max_min[1] = current_dist - original_dist
         # 场力
         l[index] = ti.Vector([0.0, 0.0, 0.0])
-        pos=ti.Vector([(x[n][0]+bg_size_x*0.5)/bg_quad_size, 
-                       (x[n][1]+bg_size_y*0.5)/bg_quad_size,
-                       (x[n][2]+bg_size_z*0.5)/bg_quad_size])
+        pos = (x[n]+bg_size * 0.5)/bg_quad_size
         for ii in ti.static(range(3)):
             if abs(pos[ii]-int(pos[ii]))<1e-3: pos[ii] += 1e-3#防止pos[ii]为整数
             pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
@@ -391,7 +389,7 @@ def calcute_loss_dist(j: ti.i32):
             list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
             avg_bias += list_dist[i]
         avg_bias /= (n_x-1)
-        for i in ti.ndrange(n_x-1):
+        for i in ti.static(range(n_x-1)):
             loss_step[t] += abs(list_dist[i]-avg_bias)
         loss[None] += loss_step[t]*t*1e4
 
@@ -408,11 +406,11 @@ def calcute_loss_v(j: ti.i32):
 def compute_loss():
     j = n_y//2
     loss[None] = 0.0
-    calcute_loss_dist(j)
+    #calcute_loss_dist(j)
     print(loss[None])
     calcute_loss_x(j) 
     print(loss[None])
-    calcute_loss_v(j) 
+    #calcute_loss_v(j) 
     print(loss[None])
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
