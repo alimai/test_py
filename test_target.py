@@ -3,7 +3,7 @@ import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-TEST_MODE = False#True#
+TEST_MODE = True#False#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
@@ -383,43 +383,37 @@ def substep(t):
     cal_force_and_update_xv(t)
 
 @ti.kernel
-def calcute_loss_dist(t: ti.i32, j: ti.i32): 
-    avg_bias = 0.0       
-    list_dist = ti.Vector([0.0] * (n_x-1))
-    for i in ti.static(range(n_x-1)):
-        list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
-        avg_bias += list_dist[i]
-    avg_bias /= (n_x-1)
-    for i in ti.static(range(n_x-1)):
-        loss_step[t] += abs(list_dist[i]-avg_bias)*1e4
+def calcute_loss_dist(j: ti.i32): 
+    for t in ti.ndrange(max_steps):
+        avg_bias = 0.0       
+        list_dist = ti.Vector([0.0] * (n_x-1))
+        for i in ti.static(range(n_x-1)):
+            list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
+            avg_bias += list_dist[i]
+        avg_bias /= (n_x-1)
+        for i in ti.ndrange(n_x-1):
+            loss_step[t] += abs(list_dist[i]-avg_bias)
+        loss[None] += loss_step[t]*t*1e4
+
 @ti.kernel
-def calcute_loss_x(t: ti.i32, j: ti.i32):
-    for i in ti.ndrange(n_x):
-        loss_step[t] += l[i,j,t].norm()*1e1
-        # print(i, x[i,j,100], l[i,j,20])
+def calcute_loss_x(j: ti.i32):
+    for i, t in ti.ndrange(n_x, max_steps):
+        loss[None] += l[i,j,t].norm()*t*1e1
 @ti.kernel
-def calcute_loss_v(t: ti.i32, j: ti.i32):
-    for i in ti.ndrange(n_x):
-        loss_step[t] += v[i,j,t].norm()*1e1        
-@ti.kernel
-def add_loss_step(t: ti.i32):
-    loss[None] += loss_step[t] * t
+def calcute_loss_v(j: ti.i32):
+    for i, t in ti.ndrange(n_x, max_steps):
+        loss[None] += v[i,j,t].norm()*t*1e1  
 
 
-def compute_loss(t):
-    loss_step[t] = 0.0
-
+def compute_loss():
     j = n_y//2
-    loss_parts = [0.0, 0.0, 0.0]
-    calcute_loss_dist(t,j)
-    loss_parts[0] = loss_step[t]
-    calcute_loss_x(t,j) 
-    loss_parts[1] = loss_step[t]
-    calcute_loss_v(t,j) 
-    loss_parts[2] = loss_step[t]   
-    add_loss_step(t)
-    if t==1 or t == max_steps - 1:
-        print(loss_parts)
+    loss[None] = 0.0
+    calcute_loss_dist(j)
+    print(loss[None])
+    calcute_loss_x(j) 
+    print(loss[None])
+    calcute_loss_v(j) 
+    print(loss[None])
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
 def run_windows(window, n, keep = False):
@@ -497,7 +491,7 @@ if __name__ == '__main__':  # 主函数
                     if iter % (max_iter//10) == 0: #display 
                         if n % 10 == 1:#if n % (max_steps-1) == 0: 
                             run_windows(window, n)
-                compute_loss(n)
+            compute_loss()
   
         learning_rate *= (1.0 - alpha)
         update_spring_para2(iter)        
