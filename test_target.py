@@ -177,19 +177,22 @@ def initialize_spring_para2():
 @ti.kernel
 def update_spring_para2(iter: int):
     sum_grad = 0.0
-    for t in ti.ndrange(max_steps):
+    for n in ti.ndrange(max_steps-1):
+        t = n+1
         sum_grad += abs(spring_YP.grad[t])
         sum_grad += abs(spring_YN.grad[t])
         sum_grad += abs(dashpot_damping.grad[t])
         sum_grad += abs(drag_damping.grad[t])
+        print(t, spring_YP.grad[t], spring_YN.grad[t], dashpot_damping.grad[t], drag_damping.grad[t])
 
     adj_ratio = 1.0
     if iter < 5000 and sum_grad < 1.0:
         adj_ratio = 1.0 / (sum_grad+1e-5)    
     print("adj_ratio", adj_ratio, sum_grad)
 
-    for t in ti.ndrange(max_steps):
+    for n in ti.ndrange(max_steps-1):
         #if t>=max_steps-2:
+            t = n+1
             spring_YP_ratio = spring_YP.grad[t] * adj_ratio
             spring_YN_ratio = spring_YN.grad[t] * adj_ratio
             dashpot_damping_ratio = dashpot_damping.grad[t] * adj_ratio
@@ -301,8 +304,11 @@ def cal_force_and_update_xv(t: ti.i32):
         for ii in ti.static(range(3)):
             if abs(pos[ii]-int(pos[ii]))<1e-3: pos[ii] += 1e-3#防止pos[ii]为整数
             pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
-        pos_down = ti.ceil(pos)
-        pos_up = ti.floor(pos)
+        pos_down =ti.cast( ti.ceil(pos), ti.i32)
+        pos_up = ti.cast(ti.floor(pos), ti.i32)
+        pos_bias = pos - pos_down
+        pos_bias2 = pos - pos_up
+        l[index] = (pos_bias * field1[pos_up] - pos_bias2 * field1[pos_down])#pos#
         for ii in ti.static(range(4)):
             pos_check1 = pos_down
             pos_check2 = pos_up
@@ -315,9 +321,9 @@ def cal_force_and_update_xv(t: ti.i32):
                 pos_check2[0] = pos_down[0]
                 pos_check2[1] = pos_down[1]
             direct_ud = (pos_check2 - pos_check1).normalized()
-            field_check1 = field1[ti.cast(pos_check1, ti.i32)]
-            field_check2 = field1[ti.cast(pos_check2, ti.i32)]
-            l[index] += (field_check2+field_check1) * 0.5
+            field_check1 = field1[pos_check1]
+            field_check2 = field1[pos_check2]
+            #l[index] += (field_check2+field_check1) * 0.5
             force += -(field_check2-field_check1)*direct_ud*field_damping[None]
         if pos[1] > bg_n[1]*0.5+0.5:
             force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
@@ -456,7 +462,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 100# 最大迭代次数 
+    max_iter = 1# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
