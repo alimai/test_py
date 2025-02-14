@@ -3,19 +3,19 @@ import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-TEST_MODE = True#False#
+TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
+dt = 1e-4  # 时间步长
+alpha = 1e-4  # 学习率衰减
+learning_rate = 1e-3  # 学习率
+
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
 dashpot_damping_base = 1e1  # 阻尼系数--速度差相关
 drag_damping_base = 1.0  # 空气阻力系数
 field_damping_base = 1e4
-
-dt = 1e-4  # 时间步长
-alpha = 1e-4  # 学习率衰减
-learning_rate = 1e-4  # 学习率
 
 #分层数据结构
 scalar = lambda: ti.field(dtype=ti.f32)  # 标量字段，用于place放入taichi分层数据中
@@ -69,14 +69,12 @@ lay2 = lay1.dense(ti.ij, (n_x, n_y))
 x = vec()
 v = vec()
 f = vec()
-l = vec() #location in field
+l = scalar() #location in field
 lay2.place(x, v, f, l)
 
 
 loss = scalar()
-loss_step = scalar()
 ti.root.place(loss)
-lay1.place(loss_step)
 ti.root.lazy_grad()
 #lay1.lazy_grad()
 #lay2.lazy_grad()
@@ -177,22 +175,19 @@ def initialize_spring_para2():
 @ti.kernel
 def update_spring_para2(iter: int):
     sum_grad = 0.0
-    for n in ti.ndrange(max_steps-1):
-        t = n+1
+    for t in ti.ndrange(max_steps):
         sum_grad += abs(spring_YP.grad[t])
         sum_grad += abs(spring_YN.grad[t])
         sum_grad += abs(dashpot_damping.grad[t])
         sum_grad += abs(drag_damping.grad[t])
-        print(t, spring_YP.grad[t], spring_YN.grad[t], dashpot_damping.grad[t], drag_damping.grad[t])
 
     adj_ratio = 1.0
     if iter < 5000 and sum_grad < 1.0:
         adj_ratio = 1.0 / (sum_grad+1e-5)    
     print("adj_ratio", adj_ratio, sum_grad)
 
-    for n in ti.ndrange(max_steps-1):
+    for t in ti.ndrange(max_steps):
         #if t>=max_steps-2:
-            t = n+1
             spring_YP_ratio = spring_YP.grad[t] * adj_ratio
             spring_YN_ratio = spring_YN.grad[t] * adj_ratio
             dashpot_damping_ratio = dashpot_damping.grad[t] * adj_ratio
@@ -257,6 +252,17 @@ def add_spring_offsets():
 force_max_min = ti.field(ti.f32, shape=2)#>0
 dist_max_min = ti.field(ti.f32, shape=2)#+/-
 force_max_min_index = ti.field(ti.i32, shape=2)
+@ti.func
+def interpolate_field(pos: ti.template()) -> ti.f32:
+    base = ti.cast(pos - 0.5, ti.i32)
+    fx = pos - ti.cast(base, ti.f32)
+    w = [0.5 * (1.5 - fx) ** 2, 0.75 - (fx - 1.0) ** 2, 0.5 * (fx - 0.5) ** 2]
+    field_value = ti.Vector([0.0, 0.0, 0.0])
+    for i, j, k in ti.static(ti.ndrange(3, 3, 3)):
+        weight = w[i][0] * w[j][1] * w[k][2]
+        grid_pos = ti.Vector([base[0] + i, base[1] + j, base[2] + k])
+        field_value += weight * field1[grid_pos]
+    return field_value
 @ti.kernel
 def cal_force_and_update_xv(t: ti.i32):     
     #gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
@@ -299,16 +305,14 @@ def cal_force_and_update_xv(t: ti.i32):
                         force_max_min_index[1] = n[0]
                         dist_max_min[1] = current_dist - original_dist
         # 场力
-        l[index] = ti.Vector([0.0, 0.0, 0.0])
         pos = (x[n]+bg_size * 0.5)/bg_quad_size
         for ii in ti.static(range(3)):
             if abs(pos[ii]-int(pos[ii]))<1e-3: pos[ii] += 1e-3#防止pos[ii]为整数
             pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
         pos_down =ti.cast( ti.ceil(pos), ti.i32)
         pos_up = ti.cast(ti.floor(pos), ti.i32)
-        pos_bias = pos - pos_down
-        pos_bias2 = pos - pos_up
-        l[index] = (pos_bias * field1[pos_up] - pos_bias2 * field1[pos_down])#pos#
+        l[index] = 0.0
+        #l[index] = interpolate_field(pos)#pos#
         for ii in ti.static(range(4)):
             pos_check1 = pos_down
             pos_check2 = pos_up
@@ -320,11 +324,14 @@ def cal_force_and_update_xv(t: ti.i32):
                 pos_check1[1] = pos_up[1]
                 pos_check2[0] = pos_down[0]
                 pos_check2[1] = pos_down[1]
-            direct_ud = (pos_check2 - pos_check1).normalized()
             field_check1 = field1[pos_check1]
             field_check2 = field1[pos_check2]
-            #l[index] += (field_check2+field_check1) * 0.5
-            force += -(field_check2-field_check1)*direct_ud*field_damping[None]
+            pos_bias1 = pos - pos_check1
+            pos_bias2 = pos - pos_check2
+            loc = (pos_bias1.norm() * field_check2 + pos_bias2.norm() * field_check1)*0.5
+            l[index] += loc
+            direct_ud = (pos_check2 - pos_check1).normalized()
+            force += -(field_check2-field_check1)*direct_ud*loc*field_damping[None]
         if pos[1] > bg_n[1]*0.5+0.5:
             force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
         elif pos[1] < bg_n[1]*0.5-0.5:
@@ -395,28 +402,29 @@ def calcute_loss_dist(j: ti.i32):
             list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
             avg_bias += list_dist[i]
         avg_bias /= (n_x-1)
+        loss_step = 0.0
         for i in ti.static(range(n_x-1)):
-            loss_step[t] += abs(list_dist[i]-avg_bias)
-        loss[None] += loss_step[t]*t*1e4
+            loss_step += abs(list_dist[i]-avg_bias)
+        loss[None] += loss_step*t*1e3
 
 @ti.kernel
 def calcute_loss_x(j: ti.i32):
     for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += l[i,j,t].norm()*t*1e1
+        loss[None] += l[i,j,t]*t
 @ti.kernel
 def calcute_loss_v(j: ti.i32):
     for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += v[i,j,t].norm()*t*1e1  
+        loss[None] += v[i,j,t].norm()*t 
 
 
 def compute_loss():
     j = n_y//2
     loss[None] = 0.0
-    #calcute_loss_dist(j)
+    calcute_loss_dist(j)
     print(loss[None])
     calcute_loss_x(j) 
     print(loss[None])
-    #calcute_loss_v(j) 
+    calcute_loss_v(j) 
     print(loss[None])
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
@@ -462,11 +470,11 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 1# 最大迭代次数 
+    max_iter = 1000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
-    disp_by_step = False
+    disp_by_step = False#True#
     if not TEST_MODE and disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
