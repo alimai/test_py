@@ -8,8 +8,8 @@ ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
+learning_rate = 1e-2  # 学习率
 alpha = 1e-4  # 学习率衰减
-learning_rate = 1e-3  # 学习率
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
@@ -405,7 +405,7 @@ def calcute_loss_dist(j: ti.i32):
         loss_step = 0.0
         for i in ti.static(range(n_x-1)):
             loss_step += abs(list_dist[i]-avg_bias)
-        loss[None] += loss_step*t*1e3
+        loss[None] += loss_step*t*1e5
 
 @ti.kernel
 def calcute_loss_x(j: ti.i32):
@@ -470,7 +470,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 1000# 最大迭代次数 
+    max_iter = 300# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
