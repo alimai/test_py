@@ -3,7 +3,7 @@ import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-TEST_MODE = False#True#
+TEST_MODE = True#False#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
@@ -41,7 +41,8 @@ bg_n = voxels.shape
 bg_size_x = ellipse_long * 2 * 1.2
 bg_quad_size = bg_size_x / bg_n[0]
 bg_size = ti.Vector([bg_size_x, bg_quad_size * bg_n[1], bg_quad_size * bg_n[2]])
-field_offset =[]
+field_offset =[]#不能在核函数内初始化
+field_max = ti.field(dtype=ti.i32, shape=())
 
 #<<<<<牙齿量>>>>>
 n_x = 15  # 控制点行数
@@ -50,7 +51,7 @@ tooth_size = 0.01#牙齿大小基准
 
 
 bending_springs = True  # 是否使用弯曲弹簧
-spring_offsets =[] #弹簧偏移量---算子计算范围
+spring_offsets =[] #弹簧偏移量---算子计算范围#不能在核函数内初始化
 r = ti.field(dtype=ti.f32, shape=(n_x, n_y))  # 牙齿大小
 
 #单层数据结构
@@ -62,7 +63,7 @@ spring_YN = scalar()  # 斥力系数--长度相关
 dashpot_damping = scalar()  # 阻尼系数--速度差相关
 drag_damping = scalar()  # 空气阻力系数
 
-max_steps = 512#1024
+max_steps = 256#512#1024
 lay1 = ti.root.dense(ti.k, max_steps)
 lay1.place(spring_YP, spring_YN, dashpot_damping, drag_damping)
 lay2 = lay1.dense(ti.ij, (n_x, n_y))
@@ -81,6 +82,7 @@ ti.root.lazy_grad()
 
 @ti.kernel
 def init_field_data()->int:
+    field_max[None] = 0
     bg_n_act = 0
     n_layers = int(0.1 / bg_quad_size)
     target_radius_long = ellipse_long / bg_quad_size
@@ -99,6 +101,7 @@ def init_field_data()->int:
                     field1[i, j, k] = n
                     field2[i, j, k] = -(r_level0+n_layers*r_level1+0.1)
                     bg_n_act += 1
+                    if n > field_max[None]: field_max[None]=n
                     break
                     # if dist_bias > 0:
                     #     field1[i, j, k] = n
@@ -158,14 +161,8 @@ def load_spring_para():
     else:
         return False
 @ti.kernel
-def initialize_spring_para():
-    for i, j, t in x:
-        spring_YP[i,j, t]= spring_YP_base  
-        spring_YN[i,j, t] = spring_YN_base  
-        dashpot_damping[i,j, t] = dashpot_damping_base  
-        drag_damping[i,j, t] = drag_damping_base 
-@ti.kernel
 def initialize_spring_para2():
+    field_damping[None] = field_damping_base
     for t in ti.ndrange(max_steps):
         spring_YP[t]= spring_YP_base  
         spring_YN[t] = spring_YN_base  
@@ -249,20 +246,48 @@ def add_spring_offsets():
 
 
 
+@ti.func
+def linear_interpolation(p: ti.template(), gradient: ti.template())->ti.f32:
+    base = ti.floor(p, ti.i32)
+    offset = p - base
+
+    # field_max = 0.0
+    # for i, j, k in ti.ndrange(2, 2, 2):
+    #     neighbor = base + ti.Vector([i, j, k])
+    #     if ti.is_active(voxels, neighbor):
+    #         if field1[neighbor] > field_max:
+    #             field_max = field1[neighbor]
+
+    field_inter = 0.0
+    gradient = ti.Vector([0.0,0.0,0.0])
+    for i, j, k in ti.ndrange(2, 2, 2):
+        neighbor = base + ti.Vector([i, j, k])
+        value = field1[neighbor]
+        if value > field_max[None]: value = field_max[None]
+        # 计算标量权重
+        weight = (1 - offset.x + (offset.x * 2 - 1) * i) * \
+                 (1 - offset.y + (offset.y * 2 - 1) * j) * \
+                 (1 - offset.z + (offset.z * 2 - 1) * k)
+        field_inter += value * weight
+    
+        # 计算梯度权重
+        weight_x = (2 * i - 1) * \
+                 (1 - offset.y + (offset.y * 2 - 1) * j) * \
+                 (1 - offset.z + (offset.z * 2 - 1) * k)
+        weight_y = (1 - offset.x + (offset.x * 2 - 1) * i) * \
+                   (2 * j - 1) * \
+                 (1 - offset.z + (offset.z * 2 - 1) * k)
+        weight_z = (1 - offset.x + (offset.x * 2 - 1) * i) * \
+                 (1 - offset.y + (offset.y * 2 - 1) * j) * \
+                 (2 * k - 1)
+        gradient += value * ti.Vector([weight_x, weight_y, weight_z])
+    
+    return field_inter
+
+
 force_max_min = ti.field(ti.f32, shape=2)#>0
 dist_max_min = ti.field(ti.f32, shape=2)#+/-
 force_max_min_index = ti.field(ti.i32, shape=2)
-@ti.func
-def interpolate_field(pos: ti.template()) -> ti.f32:
-    base = ti.cast(pos - 0.5, ti.i32)
-    fx = pos - ti.cast(base, ti.f32)
-    w = [0.5 * (1.5 - fx) ** 2, 0.75 - (fx - 1.0) ** 2, 0.5 * (fx - 0.5) ** 2]
-    field_value = ti.Vector([0.0, 0.0, 0.0])
-    for i, j, k in ti.static(ti.ndrange(3, 3, 3)):
-        weight = w[i][0] * w[j][1] * w[k][2]
-        grid_pos = ti.Vector([base[0] + i, base[1] + j, base[2] + k])
-        field_value += weight * field1[grid_pos]
-    return field_value
 @ti.kernel
 def cal_force_and_update_xv(t: ti.i32):     
     #gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
@@ -309,53 +334,28 @@ def cal_force_and_update_xv(t: ti.i32):
         for ii in ti.static(range(3)):
             if abs(pos[ii]-int(pos[ii]))<1e-3: pos[ii] += 1e-3#防止pos[ii]为整数
             pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
-        pos_down =ti.cast( ti.ceil(pos), ti.i32)
-        pos_up = ti.cast(ti.floor(pos), ti.i32)
-        l[index] = 0.0
-        #l[index] = interpolate_field(pos)#pos#
-        for ii in ti.static(range(4)):
-            pos_check1 = pos_down
-            pos_check2 = pos_up
-            if ii < 2:
-                pos_check1[ii] = pos_up[ii]
-                pos_check2[ii] = pos_down[ii]
-            elif ii == 2:
-                pos_check1[0] = pos_up[0]
-                pos_check1[1] = pos_up[1]
-                pos_check2[0] = pos_down[0]
-                pos_check2[1] = pos_down[1]
-            field_check1 = field1[pos_check1]
-            field_check2 = field1[pos_check2]
-            pos_bias1 = pos - pos_check1
-            pos_bias2 = pos - pos_check2
-            loc = (pos_bias1.norm() * field_check2 + pos_bias2.norm() * field_check1)*0.5
-            l[index] += loc
-            direct_ud = (pos_check2 - pos_check1).normalized()
-            force += -(field_check2-field_check1)*direct_ud*loc*field_damping[None]
-        if pos[1] > bg_n[1]*0.5+0.5:
-            force += ti.Vector([0.0, -0.5, 0.0])*field_damping[None]
-        elif pos[1] < bg_n[1]*0.5-0.5:
-            force += ti.Vector([0.0, 0.5, 0.0])*field_damping[None]
-        else:
-            force += ti.Vector([0.0, bg_n[1]*0.5 - pos[1], 0.0])*field_damping[None]
-
+        grad_field = ti.Vector([0.0,0.0,0.0])        
+        field_inter = linear_interpolation(pos, grad_field)
+        force += -grad_field*field_inter*field_damping[None]
+        l[index] = field_inter
+        #print(field_inter, pos)
         f[index] = force
 
-    # 添加全局约束
-    ti.sync()
-    for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(v):        
-        index = ti.Vector([i, j, t])
-        n = ti.Vector([i, j, t-1])
-        if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
-            if n[0]!=0 and n[0]!=n_x-1:#固定两端 
-                if (n[0] -force_max_min_index[0]) * (n[0] -force_max_min_index[1]) < 0:
-                    index_bias =[1,0,0] if force_max_min_index[0] > force_max_min_index[1] else[-1,0,0]
-                    m = n+index_bias
-                    direct_mn = (x[n]-x[m]).normalized()
-                    if dist_max_min[0] > 0:
-                        f[index] += -direct_mn * 0.5
-                    else:
-                        f[index] += -direct_mn * 0.5
+    # # 添加全局约束
+    # ti.sync()
+    # for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(v):        
+    #     index = ti.Vector([i, j, t])
+    #     n = ti.Vector([i, j, t-1])
+    #     if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
+    #         if n[0]!=0 and n[0]!=n_x-1:#固定两端 
+    #             if (n[0] -force_max_min_index[0]) * (n[0] -force_max_min_index[1]) < 0:
+    #                 index_bias =[1,0,0] if force_max_min_index[0] > force_max_min_index[1] else[-1,0,0]
+    #                 m = n+index_bias
+    #                 direct_mn = (x[n]-x[m]).normalized()
+    #                 if dist_max_min[0] > 0:
+    #                     f[index] += -direct_mn * 0.5
+    #                 else:
+    #                     f[index] += -direct_mn * 0.5
 
     ti.sync()
     for i, j in ti.ndrange(n_x, n_y):       
@@ -405,7 +405,7 @@ def calcute_loss_dist(j: ti.i32):
         loss_step = 0.0
         for i in ti.static(range(n_x-1)):
             loss_step += abs(list_dist[i]-avg_bias)
-        loss[None] += loss_step*t*1e5
+        loss[None] += loss_step*t*1e3
 
 @ti.kernel
 def calcute_loss_x(j: ti.i32):
@@ -479,10 +479,9 @@ if __name__ == '__main__':  # 主函数
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
     add_field_offsets()
-    add_spring_offsets()    
-    field_damping[None] = field_damping_base
-    if not load_spring_para():
-        initialize_spring_para2()
+    add_spring_offsets()
+    initialize_spring_para2()        
+    load_spring_para()
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
