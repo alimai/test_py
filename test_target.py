@@ -8,7 +8,7 @@ ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-2  # 学习率
+learning_rate = 1e-4  # 学习率
 alpha = 1e-4  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -183,8 +183,9 @@ def update_spring_para2(iter: int):
         adj_ratio = 1.0 / (sum_grad+1e-5)    
     print("adj_ratio", adj_ratio, sum_grad)
 
-    for t in ti.ndrange(max_steps):
-        #if t>=max_steps-2:
+    if not ti.math.isnan(sum_grad):
+        for t in ti.ndrange(max_steps):
+            #if t>=max_steps-2:
             spring_YP_ratio = spring_YP.grad[t] * adj_ratio
             spring_YN_ratio = spring_YN.grad[t] * adj_ratio
             dashpot_damping_ratio = dashpot_damping.grad[t] * adj_ratio
@@ -251,38 +252,38 @@ def linear_interpolation(p: ti.template(), gradient: ti.template())->ti.f32:
     base = ti.floor(p, ti.i32)
     offset = p - base
 
-    # field_max = 0.0
-    # for i, j, k in ti.ndrange(2, 2, 2):
-    #     neighbor = base + ti.Vector([i, j, k])
-    #     if ti.is_active(voxels, neighbor):
-    #         if field1[neighbor] > field_max:
-    #             field_max = field1[neighbor]
-
     field_inter = 0.0
     gradient = ti.Vector([0.0,0.0,0.0])
     for i, j, k in ti.ndrange(2, 2, 2):
         neighbor = base + ti.Vector([i, j, k])
         value = field1[neighbor]
-        if value > field_max[None]: value = field_max[None]
+        if abs(value) > field_max[None]: value = field_max[None]
         # 计算标量权重
         weight = (1 - offset.x + (offset.x * 2 - 1) * i) * \
                  (1 - offset.y + (offset.y * 2 - 1) * j) * \
                  (1 - offset.z + (offset.z * 2 - 1) * k)
-        field_inter += value * weight
+        field_inter += value * weight    
     
-        # 计算梯度权重
-        weight_x = (2 * i - 1) * \
-                 (1 - offset.y + (offset.y * 2 - 1) * j) * \
-                 (1 - offset.z + (offset.z * 2 - 1) * k)
-        weight_y = (1 - offset.x + (offset.x * 2 - 1) * i) * \
-                   (2 * j - 1) * \
-                 (1 - offset.z + (offset.z * 2 - 1) * k)
-        weight_z = (1 - offset.x + (offset.x * 2 - 1) * i) * \
-                 (1 - offset.y + (offset.y * 2 - 1) * j) * \
-                 (2 * k - 1)
+        # 计算梯度权重---容易梯度爆炸！！！
+        # weight_x = (2 * i - 1) * \
+        #          (1 - offset.y + (offset.y * 2 - 1) * j) * \
+        #          (1 - offset.z + (offset.z * 2 - 1) * k)
+        # weight_y = (1 - offset.x + (offset.x * 2 - 1) * i) * \
+        #          (2 * j - 1) * \
+        #          (1 - offset.z + (offset.z * 2 - 1) * k)
+        # weight_z = (1 - offset.x + (offset.x * 2 - 1) * i) * \
+        #          (1 - offset.y + (offset.y * 2 - 1) * j) * \
+        #          (2 * k - 1)
+        # gradient += value * ti.Vector([weight_x, weight_y, weight_z]) 
+
+        #offset2 = p - neighbor
+        weight_x = (2 * i - 1)# * (1 - offset2.y) * (1 - offset2.z)
+        weight_y = (2 * j - 1)# * (1 - offset2.x) * (1 - offset2.z)
+        weight_z = (2 * k - 1)# * (1 - offset2.x) * (1 - offset2.y) 
         gradient += value * ti.Vector([weight_x, weight_y, weight_z])
     
     return field_inter
+
 
 
 force_max_min = ti.field(ti.f32, shape=2)#>0
@@ -336,9 +337,9 @@ def cal_force_and_update_xv(t: ti.i32):
             pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
         grad_field = ti.Vector([0.0,0.0,0.0])        
         field_inter = linear_interpolation(pos, grad_field)
+        #print(field_inter, grad_field, -grad_field*field_inter*field_damping[None], force)
         force += -grad_field*field_inter*field_damping[None]
         l[index] = field_inter
-        #print(field_inter, pos)
         f[index] = force
 
     # # 添加全局约束
