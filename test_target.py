@@ -3,13 +3,13 @@ import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-TEST_MODE = True#False#
+TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-4  # 学习率
-alpha = 1e-4  # 学习率衰减
+learning_rate = 1e-1  # 学习率
+alpha = 1e-3  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
 spring_YN_base = 3e3  # 斥力系数--长度相关
@@ -265,6 +265,8 @@ def linear_interpolation(p: ti.template(), gradient: ti.template())->ti.f32:
         field_inter += value * weight    
     
         # 计算梯度权重---容易梯度爆炸！！！
+        # 原因应为ti.floor支持不好，某些时候插值结果只依赖base
+        # 不包含其它参数
         # weight_x = (2 * i - 1) * \
         #          (1 - offset.y + (offset.y * 2 - 1) * j) * \
         #          (1 - offset.z + (offset.z * 2 - 1) * k)
@@ -303,13 +305,19 @@ def cal_force_and_update_xv(t: ti.i32):
         for offset_orig in ti.static(spring_offsets):
             spring_offset = ti.Vector([offset_orig[0], offset_orig[1], 0])
             m = n + spring_offset
-            if 0 <= m[0] < n_x and 0 <= m[1] < n_y:                
+            if 0 <= m[0] < n_x and 0 <= m[1] < n_y:        
                 force_cur = ti.Vector([0.0, 0.0, 0.0])
                 bias_x = x[n] - x[m]
-                bias_v = v[n] - v[m]
-                direct_mn = bias_x.normalized()
                 current_dist = bias_x.norm() - (r[n[0],n[1]] + r[m[0], m[1]])*0.5
                 original_dist = spring_offset.norm() * (r[n[0],n[1]] + r[m[0], m[1]])*0.5 #tooth_size
+
+                direct_mn = bias_x.normalized() 
+                m_mirror = n - spring_offset    
+                if 0 <= m_mirror[0] < n_x and 0 <= m_mirror[1] < n_y: #重定义方向
+                    bias_fnl = x[m_mirror]-x[m]
+                    bias_fnl[1] = bias_x[1]#y方向维持
+                    direct_mn = bias_fnl.normalized()
+                    
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
@@ -318,6 +326,7 @@ def cal_force_and_update_xv(t: ti.i32):
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
                     force_cur += spring_YN[t-1] * direct_mn * (original_dist - current_dist)#**0.5
                 #阻尼力
+                #bias_v = v[n] - v[m]
                 #force_cur += -dashpot_damping[t-1] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
                 if spring_offset[0] != 0:
@@ -415,7 +424,7 @@ def calcute_loss_x(j: ti.i32):
 @ti.kernel
 def calcute_loss_v(j: ti.i32):
     for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += v[i,j,t].norm()*t 
+        loss[None] += v[i,j,t].norm()*t*1e-1 
 
 
 def compute_loss():
