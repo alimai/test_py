@@ -4,7 +4,7 @@ import torch
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-TEST_MODE = True#False#
+TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
@@ -184,37 +184,25 @@ def initialize_spring_para2():
         drag_damping[t] = drag_damping_base
 
 @ti.kernel
-def update_spring_para2(iter: int)->ti.f32:
-    sum_grad = 0.0
+def update_spring_para2():
     for t in ti.ndrange(max_steps):
-        sum_grad += abs(spring_YP.grad[t])
-        sum_grad += abs(spring_YN.grad[t])
-        sum_grad += abs(dashpot_damping.grad[t])
-        sum_grad += abs(drag_damping.grad[t])
-
-    adj_ratio = 1.0
-    if iter < 5000 and abs(sum_grad) < 1.0:
-        adj_ratio = 1.0 / (abs(sum_grad)+1e-5)
-    elif abs(sum_grad) > 1e10:
-        adj_ratio = 1.0e10 / abs(sum_grad)
-    #print("adj_ratio", adj_ratio, sum_grad)
-
-    if not ti.math.isnan(sum_grad):
-        for t in ti.ndrange(max_steps):
-            #if t>=max_steps-2:
-            spring_YP_ratio = spring_YP.grad[t] * adj_ratio
-            spring_YN_ratio = spring_YN.grad[t] * adj_ratio
-            dashpot_damping_ratio = dashpot_damping.grad[t] * adj_ratio
-            drag_damping_ratio = drag_damping.grad[t] * adj_ratio
-            if abs(spring_YP_ratio) > 10 : spring_YP_ratio = 10 * spring_YP_ratio / abs(spring_YP_ratio)
-            if abs(spring_YN_ratio) > 10 : spring_YN_ratio = 10 * spring_YN_ratio / abs(spring_YN_ratio)
-            if abs(dashpot_damping_ratio) > 10 : dashpot_damping_ratio = 10 * dashpot_damping_ratio / abs(dashpot_damping_ratio)
-            if abs(drag_damping_ratio) > 10 : drag_damping_ratio = 10 * drag_damping_ratio / abs(drag_damping_ratio)
-            spring_YP[t] += -learning_rate * spring_YP[t] * spring_YP_ratio
-            spring_YN[t] += -learning_rate * spring_YN[t] * spring_YN_ratio
-            dashpot_damping[t] += -learning_rate * dashpot_damping[t] * dashpot_damping_ratio
-            #drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
-    return sum_grad
+        #if t>=max_steps-2:
+        spring_YP_bias = learning_rate * spring_YP.grad[t]
+        spring_YN_bias = learning_rate * spring_YN.grad[t]
+        dashpot_damping_bias = learning_rate * dashpot_damping.grad[t]
+        drag_damping_bias = learning_rate * drag_damping.grad[t]
+        if abs(spring_YP_bias) > 0.1 * spring_YP[t] :
+            spring_YP_bias = 0.1 * spring_YP[t] * spring_YP_bias / abs(spring_YP_bias)
+        if abs(spring_YN_bias) > 0.1 * spring_YN[t]:
+            spring_YN_bias = 0.1 * spring_YN[t] * spring_YN_bias / abs(spring_YN_bias)
+        if abs(dashpot_damping_bias) > 0.1 * dashpot_damping[t]:
+            dashpot_damping_bias = 0.1 * dashpot_damping[t] * dashpot_damping_bias / abs(dashpot_damping_bias)
+        if abs(drag_damping_bias) > 0.1 * drag_damping[t]:
+            drag_damping_bias = 0.1 * drag_damping[t] * drag_damping_bias / abs(drag_damping_bias)
+        spring_YP[t] += -spring_YP_bias
+        spring_YN[t] += -spring_YN_bias
+        dashpot_damping[t] += -dashpot_damping_bias
+        #drag_damping[t] += -drag_damping_ratio
 
 #非ti.kernel函数
 def update_spring_para_th():
@@ -436,9 +424,9 @@ def compute_loss():
     j = n_y//2
     loss[None] = 0.0
     calcute_loss_dist(j)
-    print(loss[None])
+    #print(loss[None])
     calcute_loss_x(j) 
-    print(loss[None])
+    #print(loss[None])
     calcute_loss_v(j) 
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
@@ -484,7 +472,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 1000# 最大迭代次数 
+    max_iter = 500000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -505,7 +493,7 @@ if __name__ == '__main__':  # 主函数
     spring_YPs=[]
     losses =[]  # 损失列表
     for iter in range(max_iter):#while window.running:
-        print('\nIter=', iter)
+        #print('\nIter=', iter)
         loss[None] = 0.0
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
@@ -520,21 +508,19 @@ if __name__ == '__main__':  # 主函数
   
         #update_spring_para_th()
         learning_rate *= (1.0 - alpha)
-        sum_grade = update_spring_para2(iter)
-        if np.isnan(sum_grade):
-            print(loss[None], sum_grade)
-            continue#break#       
+        update_spring_para2()
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
-
-        print('Loss=', loss[None])
+        
+        if iter % (max_iter//500) == 0:
+            print('\nIter=', iter, ', Loss=', loss[None])
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
         # print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
         # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
         # print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
         # print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
-        print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
+        #print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
         #print(spring_YP[0], spring_YP[1], spring_YP[max_steps-2], spring_YP[max_steps-1])
         #break
 
