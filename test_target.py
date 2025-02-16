@@ -3,7 +3,7 @@ import time
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-TEST_MODE = False#True#
+TEST_MODE = True#False#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
@@ -315,7 +315,8 @@ def cal_force_and_update_xv(t: ti.i32):
                 m_mirror = n - spring_offset    
                 if 0 <= m_mirror[0] < n_x and 0 <= m_mirror[1] < n_y: #重定义方向
                     bias_fnl = x[m_mirror]-x[m]
-                    bias_fnl[1] = bias_x[1]#y方向维持
+                    #bias_fnl[1] = bias_x[1]#y方向维持---直接对向量的某个分量赋值时其他分量的梯度信息可能会丢失。
+                    bias_fnl = ti.Vector([bias_fnl[0], bias_x[1], bias_fnl[2]])#y方向维持
                     direct_mn = bias_fnl.normalized()
                     
                 #弹簧力
@@ -346,6 +347,13 @@ def cal_force_and_update_xv(t: ti.i32):
             pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
         grad_field = ti.Vector([0.0,0.0,0.0])        
         field_inter = linear_interpolation(pos, grad_field)
+        if force.norm() > 0 and grad_field.norm() > 0:
+            direct_f1=force.normalized()
+            direct_f2=(force+[0.0,1.0,0.0]).normalized()
+            direct_f3 = direct_f1.cross(direct_f2).normalized()
+            if direct_f3.dot(grad_field) < 0:
+                direct_f3 *= -1.0
+            grad_field = grad_field.norm() * direct_f3
         #print(field_inter, grad_field, -grad_field*field_inter*field_damping[None], force)
         force += -grad_field*field_inter*field_damping[None]
         l[index] = field_inter
@@ -480,7 +488,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 300# 最大迭代次数 
+    max_iter = 1000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
