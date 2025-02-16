@@ -371,8 +371,8 @@ def substep(t: ti.i32):
         field_inter = linear_interpolation(pos, grad_field)
         if force.norm() > 0 and grad_field.norm() > 0:
             direct_f1=force.normalized()
-            direct_f2=(force+[0.0,1.0,0.0]).normalized()
-            direct_f3 = direct_f1.cross(direct_f2).normalized()
+            direct_f2 = ti.Vector([0.0,1.0,0.0])
+            direct_f3 = (direct_f1.cross(direct_f2)).normalized()
             if direct_f3.dot(grad_field) < 0:
                 direct_f3 *= -1.0
             grad_field = grad_field.norm() * direct_f3
@@ -484,7 +484,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 100# 最大迭代次数 
+    max_iter = 1000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -518,12 +518,12 @@ if __name__ == '__main__':  # 主函数
                             run_windows(window, n)
             compute_loss()
   
-        update_spring_para_th()
-        #learning_rate *= (1.0 - alpha)
-        # sum_grade = update_spring_para2(iter)
-        # if np.isnan(sum_grade):
-        #     print(loss[None], sum_grade)
-        #     continue#break#       
+        #update_spring_para_th()
+        learning_rate *= (1.0 - alpha)
+        sum_grade = update_spring_para2(iter)
+        if np.isnan(sum_grade):
+            print(loss[None], sum_grade)
+            continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
 
