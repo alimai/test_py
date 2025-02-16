@@ -181,7 +181,7 @@ def update_spring_para2(iter: int):
     adj_ratio = 1.0
     if iter < 5000 and sum_grad < 1.0:
         adj_ratio = 1.0 / (sum_grad+1e-5)    
-    print("adj_ratio", adj_ratio, sum_grad)
+    #print("adj_ratio", adj_ratio, sum_grad)
 
     if not ti.math.isnan(sum_grad):
         for t in ti.ndrange(max_steps):
@@ -288,11 +288,8 @@ def linear_interpolation(p: ti.template(), gradient: ti.template())->ti.f32:
 
 
 
-force_max_min = ti.field(ti.f32, shape=2)#>0
-dist_max_min = ti.field(ti.f32, shape=2)#+/-
-force_max_min_index = ti.field(ti.i32, shape=2)
 @ti.kernel
-def cal_force_and_update_xv(t: ti.i32):     
+def substep(t: ti.i32):     
     #gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
     # for n in ti.grouped(x):
     #     v[n] += gravity * dt  # 施加重力
@@ -330,16 +327,7 @@ def cal_force_and_update_xv(t: ti.i32):
                 #bias_v = v[n] - v[m]
                 #force_cur += -dashpot_damping[t-1] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
-                if spring_offset[0] != 0:
-                    force_value = force_cur.norm()
-                    if force_value > force_max_min[0]:
-                        force_max_min[0] = force_value
-                        force_max_min_index[0] = n[0]
-                        dist_max_min[0] = current_dist - original_dist
-                    if force_value < force_max_min[1]:
-                        force_max_min[1] = force_value
-                        force_max_min_index[1] = n[0]
-                        dist_max_min[1] = current_dist - original_dist
+
         # 场力
         pos = (x[n]+bg_size * 0.5)/bg_quad_size
         for ii in ti.static(range(3)):
@@ -358,22 +346,6 @@ def cal_force_and_update_xv(t: ti.i32):
         force += -grad_field*field_inter*field_damping[None]
         l[index] = field_inter
         f[index] = force
-
-    # # 添加全局约束
-    # ti.sync()
-    # for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(v):        
-    #     index = ti.Vector([i, j, t])
-    #     n = ti.Vector([i, j, t-1])
-    #     if (force_max_min[0]-force_max_min[1]) * dt > 5.0 and force_max_min_index[0] != force_max_min_index[1]: 
-    #         if n[0]!=0 and n[0]!=n_x-1:#固定两端 
-    #             if (n[0] -force_max_min_index[0]) * (n[0] -force_max_min_index[1]) < 0:
-    #                 index_bias =[1,0,0] if force_max_min_index[0] > force_max_min_index[1] else[-1,0,0]
-    #                 m = n+index_bias
-    #                 direct_mn = (x[n]-x[m]).normalized()
-    #                 if dist_max_min[0] > 0:
-    #                     f[index] += -direct_mn * 0.5
-    #                 else:
-    #                     f[index] += -direct_mn * 0.5
 
     ti.sync()
     for i, j in ti.ndrange(n_x, n_y):       
@@ -401,15 +373,6 @@ def cal_force_and_update_xv(t: ti.i32):
         n = ti.Vector([i, j, t-1])
         x[index] = (x[n] + dt * v[index]) 
 
-
-def substep(t):
-    force_max_min[0] = 0.0
-    force_max_min[1] = 1e10
-    dist_max_min[0] = 0.0
-    dist_max_min[1] = 0.0
-    force_max_min_index[0] = 0
-    force_max_min_index[1] = 0
-    cal_force_and_update_xv(t)
 
 @ti.kernel
 def calcute_loss_dist(j: ti.i32): 
@@ -443,7 +406,6 @@ def compute_loss():
     calcute_loss_x(j) 
     print(loss[None])
     calcute_loss_v(j) 
-    print(loss[None])
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
 def run_windows(window, n, keep = False):
