@@ -170,7 +170,7 @@ def initialize_spring_para2():
         drag_damping[t] = drag_damping_base
 
 @ti.kernel
-def update_spring_para2(iter: int):
+def update_spring_para2(iter: int)->ti.f32:
     sum_grad = 0.0
     for t in ti.ndrange(max_steps):
         sum_grad += abs(spring_YP.grad[t])
@@ -179,8 +179,10 @@ def update_spring_para2(iter: int):
         sum_grad += abs(drag_damping.grad[t])
 
     adj_ratio = 1.0
-    if iter < 5000 and sum_grad < 1.0:
-        adj_ratio = 1.0 / (sum_grad+1e-5)    
+    if iter < 5000 and abs(sum_grad) < 1.0:
+        adj_ratio = 1.0 / (abs(sum_grad)+1e-5)
+    elif abs(sum_grad) > 1e10:
+        adj_ratio = 1.0e10 / abs(sum_grad)
     #print("adj_ratio", adj_ratio, sum_grad)
 
     if not ti.math.isnan(sum_grad):
@@ -198,7 +200,7 @@ def update_spring_para2(iter: int):
             spring_YN[t] += -learning_rate * spring_YN[t] * spring_YN_ratio
             dashpot_damping[t] += -learning_rate * dashpot_damping[t] * dashpot_damping_ratio
             #drag_damping[t] += -learning_rate * drag_damping[t] * drag_damping_ratio
-    
+    return sum_grad
 
 @ti.kernel
 def initialize_mass_points(t: ti.i32):
@@ -386,16 +388,16 @@ def calcute_loss_dist(j: ti.i32):
         loss_step = 0.0
         for i in ti.static(range(n_x-1)):
             loss_step += abs(list_dist[i]-avg_bias)
-        loss[None] += loss_step*t*1e3
+        loss[None] += loss_step*t**2*1e1
 
 @ti.kernel
 def calcute_loss_x(j: ti.i32):
     for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += l[i,j,t]*t
+        loss[None] += l[i,j,t]*t**2*1e-2
 @ti.kernel
 def calcute_loss_v(j: ti.i32):
     for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += v[i,j,t].norm()*t*1e-1 
+        loss[None] += v[i,j,t].norm()*t**2*1e-3 
 
 
 def compute_loss():
@@ -450,7 +452,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 1000# 最大迭代次数 
+    max_iter = 15000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -485,7 +487,10 @@ if __name__ == '__main__':  # 主函数
             compute_loss()
   
         learning_rate *= (1.0 - alpha)
-        update_spring_para2(iter)        
+        sum_grade = update_spring_para2(iter)
+        if np.isnan(sum_grade):
+            print(loss[None], sum_grade)
+            continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
 
