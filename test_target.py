@@ -215,10 +215,10 @@ def update_spring_para2()->ti.f32:
             adjust_ratio = loss[None] / grad_max
         for t in range(max_steps):
             #if t>=max_steps-2:
-            spring_YP[t] += -learning_rate * spring_YP.grad[t] * adjust_ratio
-            spring_YN[t] += -learning_rate * spring_YN.grad[t] * adjust_ratio
-            dashpot_damping[t] += -learning_rate * dashpot_damping.grad[t] * adjust_ratio
-            drag_damping[t] += -learning_rate * drag_damping.grad[t] * adjust_ratio
+            spring_YP[t] += -learning_rate * adjust_ratio * spring_YP[t] * spring_YP.grad[t] / grad_max
+            spring_YN[t] += -learning_rate * adjust_ratio * spring_YN[t] * spring_YN.grad[t] / grad_max
+            dashpot_damping[t] += -learning_rate * adjust_ratio * dashpot_damping[t] * dashpot_damping.grad[t] / grad_max
+            drag_damping[t] += -learning_rate * adjust_ratio * drag_damping[t] * drag_damping.grad[t] / grad_max
     return sug_grad_total
 
 #非ti.kernel函数
