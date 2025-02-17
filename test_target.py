@@ -212,13 +212,13 @@ def update_spring_para2()->ti.f32:
     if not np.isnan(sug_grad_total):
         adjust_ratio=1.0
         if(grad_max > loss[None]):
-            adjust_ratio = adjust_ratio / grad_max
+            adjust_ratio = loss[None] / grad_max
         for t in range(max_steps):
             #if t>=max_steps-2:
             spring_YP[t] += -learning_rate * spring_YP.grad[t] * adjust_ratio
             spring_YN[t] += -learning_rate * spring_YN.grad[t] * adjust_ratio
             dashpot_damping[t] += -learning_rate * dashpot_damping.grad[t] * adjust_ratio
-            #drag_damping[t] += -learning_rate * drag_damping[t] * adjust_ratio
+            drag_damping[t] += -learning_rate * drag_damping.grad[t] * adjust_ratio
     return sug_grad_total
 
 #非ti.kernel函数
