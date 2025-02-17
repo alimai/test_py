@@ -183,10 +183,10 @@ def initialize_spring_para2():
         dashpot_damping[t] = dashpot_damping_base  
         drag_damping[t] = drag_damping_base
 
-@ti.kernel
+#@ti.kernel
 def update_spring_para2()->ti.f32:
     sum_grad = [0.0, 0.0,0.0,0.0]
-    for t in ti.ndrange(max_steps):
+    for t in range(max_steps):
         sum_grad[0] += abs(spring_YP.grad[t])
         sum_grad[1] += abs(spring_YN.grad[t])
         sum_grad[2] += abs(dashpot_damping.grad[t])
@@ -195,9 +195,11 @@ def update_spring_para2()->ti.f32:
     sug_grad_total = 0.0
     for elem in sum_grad:
         sug_grad_total += elem
+        #print(elem)
+    #print("sug_grad_total: ", sug_grad_total)
 
-    if not ti.math.isnan(sug_grad_total):
-        for t in ti.ndrange(max_steps):
+    if not np.isnan(sug_grad_total):
+        for t in range(max_steps):
             #if t>=max_steps-2:
             spring_YP_ratio = learning_rate * spring_YP.grad[t]
             spring_YN_ratio = learning_rate * spring_YN.grad[t]
@@ -220,7 +222,7 @@ def update_spring_para2()->ti.f32:
 #非ti.kernel函数
 def update_spring_para_th()->ti.f32:
     sum_grad = [0.0, 0.0,0.0,0.0]
-    for t in ti.ndrange(max_steps):
+    for t in range(max_steps):
         sum_grad[0] += abs(spring_YP.grad[t])
         sum_grad[1] += abs(spring_YN.grad[t])
         sum_grad[2] += abs(dashpot_damping.grad[t])
