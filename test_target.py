@@ -185,8 +185,19 @@ def initialize_spring_para2():
 
 #@ti.kernel
 def update_spring_para2()->ti.f32:
+    grad_max = 0.0
     sum_grad = [0.0, 0.0,0.0,0.0]
     for t in range(max_steps):
+        spring_YP.grad[t] *= spring_YP[t]
+        spring_YN.grad[t] *= spring_YN[t]
+        dashpot_damping.grad[t] *= dashpot_damping[t]
+        drag_damping.grad[t] *= drag_damping[t]
+
+        grad_max = max(grad_max,abs(spring_YP.grad[t]))
+        grad_max = max(grad_max,abs(spring_YN.grad[t]))
+        grad_max = max(grad_max,abs(dashpot_damping.grad[t]))
+        grad_max = max(grad_max,abs(drag_damping.grad[t]))
+
         sum_grad[0] += abs(spring_YP.grad[t])
         sum_grad[1] += abs(spring_YN.grad[t])
         sum_grad[2] += abs(dashpot_damping.grad[t])
@@ -199,24 +210,15 @@ def update_spring_para2()->ti.f32:
     #print("sug_grad_total: ", sug_grad_total)
 
     if not np.isnan(sug_grad_total):
+        adjust_ratio=1.0
+        if(grad_max > loss[None]):
+            adjust_ratio = adjust_ratio / grad_max
         for t in range(max_steps):
             #if t>=max_steps-2:
-            spring_YP_ratio = learning_rate * spring_YP.grad[t]
-            spring_YN_ratio = learning_rate * spring_YN.grad[t]
-            dashpot_damping_ratio = learning_rate * dashpot_damping.grad[t]
-            drag_damping_ratio = learning_rate * drag_damping.grad[t]
-            if abs(spring_YP_ratio) > 0.1:
-                spring_YP_ratio *= 0.1 / abs(spring_YP_ratio)
-            if abs(spring_YN_ratio) > 0.1:
-                spring_YN_ratio *= 0.1 / abs(spring_YN_ratio)
-            if abs(dashpot_damping_ratio) > 0.1:
-                dashpot_damping_ratio *= 0.1 / abs(dashpot_damping_ratio)
-            if abs(drag_damping_ratio) > 0.1:
-                drag_damping_ratio *= 0.1 / abs(drag_damping_ratio)
-            spring_YP[t] += -spring_YP_ratio * spring_YP[t]
-            spring_YN[t] += -spring_YN_ratio * spring_YN[t]
-            dashpot_damping[t] += -dashpot_damping_ratio * dashpot_damping[t]
-            #drag_damping[t] += -drag_damping_ratio * drag_damping[t]
+            spring_YP[t] += -learning_rate * spring_YP.grad[t] * adjust_ratio
+            spring_YN[t] += -learning_rate * spring_YN.grad[t] * adjust_ratio
+            dashpot_damping[t] += -learning_rate * dashpot_damping.grad[t] * adjust_ratio
+            #drag_damping[t] += -learning_rate * drag_damping[t] * adjust_ratio
     return sug_grad_total
 
 #非ti.kernel函数
