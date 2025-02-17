@@ -185,15 +185,18 @@ def initialize_spring_para2():
 
 @ti.kernel
 def update_spring_para2()->ti.f32:
-    learning_rate *= (1.0 - alpha)
-    sum_grad = 0.0
+    sum_grad = [0.0, 0.0,0.0,0.0]
     for t in ti.ndrange(max_steps):
-        sum_grad += abs(spring_YP.grad[t])
-        sum_grad += abs(spring_YN.grad[t])
-        sum_grad += abs(dashpot_damping.grad[t])
-        sum_grad += abs(drag_damping.grad[t])
+        sum_grad[0] += abs(spring_YP.grad[t])
+        sum_grad[1] += abs(spring_YN.grad[t])
+        sum_grad[2] += abs(dashpot_damping.grad[t])
+        sum_grad[3] += abs(drag_damping.grad[t])
 
-    if not ti.math.isnan(sum_grad):
+    sug_grad_total = 0.0
+    for elem in sum_grad:
+        sug_grad_total += elem
+
+    if not ti.math.isnan(sug_grad_total):
         for t in ti.ndrange(max_steps):
             #if t>=max_steps-2:
             spring_YP_ratio = learning_rate * spring_YP.grad[t]
@@ -201,34 +204,47 @@ def update_spring_para2()->ti.f32:
             dashpot_damping_ratio = learning_rate * dashpot_damping.grad[t]
             drag_damping_ratio = learning_rate * drag_damping.grad[t]
             if abs(spring_YP_ratio) > 0.1:
-                spring_YP_ratio = 0.1 * spring_YP_ratio / abs(spring_YP_ratio)
+                spring_YP_ratio *= 0.1 / abs(spring_YP_ratio)
             if abs(spring_YN_ratio) > 0.1:
-                spring_YN_ratio = 0.1 * spring_YN_ratio / abs(spring_YN_ratio)
+                spring_YN_ratio *= 0.1 / abs(spring_YN_ratio)
             if abs(dashpot_damping_ratio) > 0.1:
-                dashpot_damping_ratio = 0.1 * dashpot_damping_ratio / abs(dashpot_damping_ratio)
+                dashpot_damping_ratio *= 0.1 / abs(dashpot_damping_ratio)
             if abs(drag_damping_ratio) > 0.1:
-                drag_damping_ratio = 0.1 * drag_damping_ratio / abs(drag_damping_ratio)
+                drag_damping_ratio *= 0.1 / abs(drag_damping_ratio)
             spring_YP[t] += -spring_YP_ratio * spring_YP[t]
             spring_YN[t] += -spring_YN_ratio * spring_YN[t]
             dashpot_damping[t] += -dashpot_damping_ratio * dashpot_damping[t]
             #drag_damping[t] += -drag_damping_ratio * drag_damping[t]
-    return sum_grad
+    return sug_grad_total
 
 #非ti.kernel函数
 def update_spring_para_th()->ti.f32:
-    sum_grad = 0.0
+    sum_grad = [0.0, 0.0,0.0,0.0]
     for t in ti.ndrange(max_steps):
-        sum_grad += abs(spring_YP.grad[t])
-        sum_grad += abs(spring_YN.grad[t])
-        sum_grad += abs(dashpot_damping.grad[t])
-        sum_grad += abs(drag_damping.grad[t])
+        sum_grad[0] += abs(spring_YP.grad[t])
+        sum_grad[1] += abs(spring_YN.grad[t])
+        sum_grad[2] += abs(dashpot_damping.grad[t])
+        sum_grad[3] += abs(drag_damping.grad[t])
+
+        if abs(spring_YP.grad[t]) > 1.0:
+            spring_YP.grad[t] *= 1.0 / abs(spring_YP.grad[t])
+        if abs(spring_YN.grad[t]) > 1.0:
+            spring_YN.grad[t] = 1.0 / abs(spring_YN.grad[t])
+        if abs(dashpot_damping.grad[t]) > 1.0:
+            dashpot_damping.grad[t] = 1.0 / abs(dashpot_damping.grad[t])
+        if abs(drag_damping.grad[t]) > 1.0:
+            drag_damping.grad[t] = 1.0 / abs(drag_damping.grad[t])
 
         spring_YP.grad[t] *= spring_YP[t]
         spring_YN.grad[t] *= spring_YN[t]
         dashpot_damping.grad[t] *= dashpot_damping[t]
         drag_damping.grad[t] *= drag_damping[t]
 
-    if not np.isnan(sum_grad):
+    sug_grad_total = 0.0
+    for elem in sum_grad:
+        sug_grad_total += elem
+
+    if (not np.isnan(sug_grad_total)):
         optimizer.zero_grad()
         spring_YP_th.grad = spring_YP.grad.to_torch()
         spring_YN_th.grad = spring_YN.grad.to_torch()
@@ -243,7 +259,7 @@ def update_spring_para_th()->ti.f32:
         spring_YN.from_torch(spring_YN_th)
         dashpot_damping.from_torch(dashpot_damping_th)
         #drag_damping.from_torch(drag_damping_th)
-    return sum_grad
+    return sug_grad_total
 
 @ti.kernel
 def initialize_mass_points(t: ti.i32):
@@ -495,7 +511,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 5000# 最大迭代次数 
+    max_iter = 1000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -530,7 +546,8 @@ if __name__ == '__main__':  # 主函数
             compute_loss()
   
         
-        sum_grade = update_spring_para_th()#update_spring_para2()#
+        learning_rate *= (1.0 - alpha)
+        sum_grade = update_spring_para2()#update_spring_para_th()#
         if np.isnan(sum_grade):
             print(loss[None], sum_grade)
             continue#break#       
@@ -538,7 +555,7 @@ if __name__ == '__main__':  # 主函数
         spring_YPs.append(spring_YP[max_steps//2])         
         
         if iter % (max_iter//100) == 0:
-            print('\nX=', iter, ', Y=', loss[None])
+            print('\nX=', iter, ', Y=', loss[None], ", Z=", sum_grade)
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
         # print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
