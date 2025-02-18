@@ -184,7 +184,19 @@ def initialize_spring_para2():
         drag_damping[t] = drag_damping_base
 
 @ti.kernel
-def re_update_grad(iter: ti.i32)->ti.f32:
+def re_update_grad_core(grad_max_cur: ti.f32):
+    grad_max_used = grad_max_cur
+    if(grad_max_used < grad_max[None]):
+        grad_max_used = grad_max[None]
+
+    for t in range(max_steps):
+        #if t>=max_steps-2:
+        spring_YP.grad[t] *= spring_YP[t] / grad_max_used
+        spring_YN.grad[t] *= spring_YN[t]  / grad_max_used
+        dashpot_damping.grad[t] *= dashpot_damping[t]  / grad_max_used
+        drag_damping.grad[t] *= drag_damping[t]  / grad_max_used
+
+def re_update_grad(iter)->float:
     grad_max_cur = 0.0
     grad_sum = ti.Vector([0.0, 0.0,0.0,0.0])
     for t in range(max_steps):
@@ -203,28 +215,21 @@ def re_update_grad(iter: ti.i32)->ti.f32:
         grad_sum[2] += abs(dashpot_damping.grad[t])
         grad_sum[3] += abs(drag_damping.grad[t])
 
-    if not ti.math.isnan(grad_max_cur):
-        if iter <= 100:
+    #grad_sum_total = grad_sum.sum()
+    #for i in range(grad_sum.n):
+    #   print(elem)
+    #   #grad_sum_total += grad_sum[i]
+    #print("sug_grad_total: ", sug_grad_total)
+
+    if not np.isnan(grad_max_cur):
+        if iter <= 10:
             grad_max[None] = max(grad_max[None], grad_max_cur)
             if(grad_max[None] > loss[None]):
                 grad_max[None] = loss[None]
-        #grad_sum_total = grad_sum.sum()
-        #for i in range(grad_sum.n):
-        #   print(elem)
-        #   #grad_sum_total += grad_sum[i]
-        #print("sug_grad_total: ", sug_grad_total)
+        re_update_grad_core(grad_max_cur)
 
-        grad_max_used = grad_max_cur
-        if(grad_max_used < grad_max[None]):
-            grad_max_used = grad_max[None]
-
-        for t in range(max_steps):
-            #if t>=max_steps-2:
-            spring_YP.grad[t] *= spring_YP[t] / grad_max_used
-            spring_YN.grad[t] *= spring_YN[t]  / grad_max_used
-            dashpot_damping.grad[t] *= dashpot_damping[t]  / grad_max_used
-            drag_damping.grad[t] *= drag_damping[t]  / grad_max_used
     return grad_max_cur
+
 @ti.kernel
 def update_spring_para2():
     for t in range(max_steps):
