@@ -183,7 +183,7 @@ def initialize_spring_para2():
         dashpot_damping[t] = dashpot_damping_base  
         drag_damping[t] = drag_damping_base
 
-@ti.kernel
+@ti.func
 def re_update_grad_core(grad_max_cur: ti.f32):
     grad_max_used = grad_max_cur
     if(grad_max_used < grad_max[None]):
@@ -195,20 +195,14 @@ def re_update_grad_core(grad_max_cur: ti.f32):
         spring_YN.grad[t] *= spring_YN[t]  / grad_max_used
         dashpot_damping.grad[t] *= dashpot_damping[t]  / grad_max_used
         drag_damping.grad[t] *= drag_damping[t]  / grad_max_used
-
-def re_update_grad(iter)->float:
-    grad_max_cur = 0.0
+@ti.kernel
+def re_update_grad(iter: ti.i32)->ti.f32:
     grad_sum = ti.Vector([0.0, 0.0,0.0,0.0])
     for t in range(max_steps):
         spring_YP.grad[t] *= spring_YP[t]
         spring_YN.grad[t] *= spring_YN[t]
         dashpot_damping.grad[t] *= dashpot_damping[t]
-        drag_damping.grad[t] *= drag_damping[t]
-
-        grad_max_cur = max(grad_max_cur,abs(spring_YP.grad[t]))
-        grad_max_cur = max(grad_max_cur,abs(spring_YN.grad[t]))
-        grad_max_cur = max(grad_max_cur,abs(dashpot_damping.grad[t]))
-        grad_max_cur = max(grad_max_cur,abs(drag_damping.grad[t]))
+        drag_damping.grad[t] *= drag_damping[t]        
 
         grad_sum[0] += abs(spring_YP.grad[t])
         grad_sum[1] += abs(spring_YN.grad[t])
@@ -222,7 +216,14 @@ def re_update_grad(iter)->float:
     #print("sug_grad_total: ", sug_grad_total)
 
     #if not np.isnan(grad_sum_total):---不能判断nan值
-    if not np.isnan(grad_sum_total):
+    if not ti.math.isnan(grad_sum_total):
+        grad_max_cur = 0.0
+        for t in range(max_steps):
+            ti.atomic_max(grad_max_cur,abs(spring_YP.grad[t]))
+            ti.atomic_max(grad_max_cur,abs(spring_YN.grad[t]))
+            ti.atomic_max(grad_max_cur,abs(dashpot_damping.grad[t]))
+            ti.atomic_max(grad_max_cur,abs(drag_damping.grad[t]))
+
         if iter <= 100:
             grad_max[None] = max(grad_max[None], grad_max_cur)
             if(grad_max[None] > loss[None]):
@@ -507,7 +508,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 5000# 最大迭代次数 
+    max_iter = 500# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
