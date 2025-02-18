@@ -203,17 +203,17 @@ def re_update_grad(iter: ti.i32)->ti.f32:
         grad_sum[2] += abs(dashpot_damping.grad[t])
         grad_sum[3] += abs(drag_damping.grad[t])
 
-    if iter == 0:
-        grad_max[None] = grad_max_cur
-        if(grad_max[None] > loss[None]):
-            grad_max[None] = loss[None]
-    grad_sum_total = grad_sum.sum()
-    #for i in range(grad_sum.n):
-    #   print(elem)
-    #   #grad_sum_total += grad_sum[i]
-    #print("sug_grad_total: ", sug_grad_total)
+    if not ti.math.isnan(grad_max_cur):
+        if iter <= 100:
+            grad_max[None] = max(grad_max[None], grad_max_cur)
+            if(grad_max[None] > loss[None]):
+                grad_max[None] = loss[None]
+        #grad_sum_total = grad_sum.sum()
+        #for i in range(grad_sum.n):
+        #   print(elem)
+        #   #grad_sum_total += grad_sum[i]
+        #print("sug_grad_total: ", sug_grad_total)
 
-    if not ti.math.isnan(grad_sum_total):
         grad_max_used = grad_max_cur
         if(grad_max_used < grad_max[None]):
             grad_max_used = grad_max[None]
@@ -224,7 +224,7 @@ def re_update_grad(iter: ti.i32)->ti.f32:
             spring_YN.grad[t] *= spring_YN[t]  / grad_max_used
             dashpot_damping.grad[t] *= dashpot_damping[t]  / grad_max_used
             drag_damping.grad[t] *= drag_damping[t]  / grad_max_used
-    return grad_sum_total
+    return grad_max_cur
 @ti.kernel
 def update_spring_para2():
     for t in range(max_steps):
@@ -501,7 +501,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 500# 最大迭代次数 
+    max_iter = 5000# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -537,17 +537,17 @@ if __name__ == '__main__':  # 主函数
   
         
         learning_rate *= (1.0 - alpha)
-        sum_grade = re_update_grad(iter)
-        if not np.isnan(sum_grade):
+        grad_max_cur = re_update_grad(iter)
+        if not np.isnan(grad_max_cur):
             update_spring_para2()#update_spring_para_th()#
         else:
-            print(loss[None], sum_grade)
+            print(loss[None], grad_max_cur, grad_max[None])
             continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
         
         if iter % (max_iter//100) == 0:
-            print('\nX=', iter, ', Y=', loss[None], ", Z=", sum_grade)
+            print('\nX=', iter, ', Y=', loss[None], ", Z=", grad_max_cur, grad_max[None])
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
         # print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
