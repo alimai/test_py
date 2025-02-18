@@ -215,20 +215,21 @@ def re_update_grad(iter)->float:
         grad_sum[2] += abs(dashpot_damping.grad[t])
         grad_sum[3] += abs(drag_damping.grad[t])
 
-    #grad_sum_total = grad_sum.sum()
+    grad_sum_total = grad_sum.sum()
     #for i in range(grad_sum.n):
     #   print(elem)
     #   #grad_sum_total += grad_sum[i]
     #print("sug_grad_total: ", sug_grad_total)
 
-    if not np.isnan(grad_max_cur):
-        if iter <= 10:
+    #if not np.isnan(grad_sum_total):---不能判断nan值
+    if not np.isnan(grad_sum_total):
+        if iter <= 100:
             grad_max[None] = max(grad_max[None], grad_max_cur)
             if(grad_max[None] > loss[None]):
                 grad_max[None] = loss[None]
         re_update_grad_core(grad_max_cur)
 
-    return grad_max_cur
+    return grad_sum_total
 
 @ti.kernel
 def update_spring_para2():
@@ -542,17 +543,17 @@ if __name__ == '__main__':  # 主函数
   
         
         learning_rate *= (1.0 - alpha)
-        grad_max_cur = re_update_grad(iter)
-        if not np.isnan(grad_max_cur):
+        grad_sum_total = re_update_grad(iter)
+        if not np.isnan(grad_sum_total):
             update_spring_para2()#update_spring_para_th()#
         else:
-            print(loss[None], grad_max_cur, grad_max[None])
+            print(loss[None], grad_sum_total)
             continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
         
         if iter % (max_iter//100) == 0:
-            print('\nX=', iter, ', Y=', loss[None], ", Z=", grad_max_cur, grad_max[None])
+            print('\nX=', iter, ', Y=', loss[None], ", Z=", grad_sum_total)
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
         # print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
