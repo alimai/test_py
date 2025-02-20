@@ -264,10 +264,10 @@ def update_spring_para2(iter: ti.i32):
     ti.sync()
     if (iter+1)%batch_size == 0:
         for t in range(max_steps):
-            spring_YP[t] += -learning_rate * spring_YP_grad[t] / batch_size#spring_YP.grad[t]
-            spring_YN[t] += -learning_rate * spring_YN_grad[t] / batch_size#spring_YN.grad[t]
-            dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t] / batch_size#dashpot_damping.grad[t]
-            drag_damping[t] += -learning_rate * drag_damping_grad[t] / batch_size#drag_damping.grad[t]
+            spring_YP[t] += -learning_rate * spring_YP_grad[t]# / batch_size#spring_YP.grad[t]
+            spring_YN[t] += -learning_rate * spring_YN_grad[t]# / batch_size#spring_YN.grad[t]
+            dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t]# / batch_size#dashpot_damping.grad[t]
+            drag_damping[t] += -learning_rate * drag_damping_grad[t]# / batch_size#drag_damping.grad[t]
 
 #非ti.kernel#函数
 def update_spring_para_th():
