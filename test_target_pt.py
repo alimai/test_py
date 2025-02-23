@@ -112,10 +112,16 @@ class MassSpringSystem:
             # 计算相邻点的距离和方向
             rolled_pos = torch.roll(current_pos, shifts=(i_shift, j_shift), dims=(0, 1))
             bias_x = current_pos - rolled_pos
-            
             dist = torch.norm(bias_x, dim=-1, keepdim=True)
             direction = bias_x / (dist + 1e-7)
-            
+
+            #修正力传递方向
+            rolled_pos_mirror = torch.roll(current_pos, shifts=(-i_shift, -j_shift), dims=(0, 1))   
+            bias_x_center = rolled_pos_mirror - rolled_pos 
+            bias_x_center[...,1] = bias_x [...,1]
+            dist_center = torch.norm(bias_x_center, dim=-1, keepdim=True) 
+            direction = bias_x_center / (dist_center + 1e-7)  
+
             # 计算原始距离
             r_rolled = torch.roll(self.r, shifts=i_shift, dims=0)  # 先在 i 方向滚动
             r_rolled = torch.roll(r_rolled, shifts=j_shift, dims=1)  # 再在 j 方向滚动
@@ -214,7 +220,7 @@ def run_windows(window, n, system, keep = False):
 
 def main():
     window = None      
-    disp_by_step = True#False#
+    disp_by_step = False#True#
     if disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
