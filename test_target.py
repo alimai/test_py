@@ -530,7 +530,7 @@ def run_windows(window, n, keep = False):
 
 if __name__ == '__main__':  # 主函数 
 
-    max_iter = 3000# 最大迭代次数 
+    max_iter = 100# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -541,7 +541,7 @@ if __name__ == '__main__':  # 主函数
     add_field_offsets()
     add_spring_offsets()
     initialize_spring_para2()        
-    load_spring_para()
+    #load_spring_para()
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
@@ -592,7 +592,7 @@ if __name__ == '__main__':  # 主函数
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
-    output_spring_para()
+    #output_spring_para()
     #run_windows(window, max_steps-1, keep = True)
     spring_YPs_2=[]
     for t in range(max_steps-1):        
