@@ -312,12 +312,6 @@ def initialize_mass_points(t: ti.i32):
         if abs(i - index_center_x)  > 5:
             r[i,j] += tooth_size * 0.5
 
-@ti.kernel
-def init_points_t(t: ti.i32):
-    for i, j in ti.ndrange(n_x, n_y):
-        x[i,j,t] = x[i,j,t-1]
-        v[i,j,t] = v[i,j,t-1]
-
 def add_spring_offsets():
     if bending_springs:
         for i in range(-1, 2):
@@ -562,7 +556,6 @@ if __name__ == '__main__':  # 主函数
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
             for n in range(1, max_steps):            
-                #init_points_t(n)
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
                     if iter % (max_iter//10) == 0: #display 
