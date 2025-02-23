@@ -115,12 +115,12 @@ class MassSpringSystem:
             dist = torch.norm(bias_x, dim=-1, keepdim=True)
             direction = bias_x / (dist + 1e-7)
 
-            #修正力传递方向
-            rolled_pos_mirror = torch.roll(current_pos, shifts=(-i_shift, -j_shift), dims=(0, 1))   
-            bias_x_center = rolled_pos_mirror - rolled_pos 
-            bias_x_center[...,1] = bias_x [...,1]
-            dist_center = torch.norm(bias_x_center, dim=-1, keepdim=True) 
-            direction = bias_x_center / (dist_center + 1e-7)  
+            # #修正力传递方向
+            # rolled_pos_mirror = torch.roll(current_pos, shifts=(-i_shift, -j_shift), dims=(0, 1))   
+            # bias_x_center = rolled_pos_mirror - rolled_pos 
+            # bias_x_center[...,1] = bias_x [...,1]
+            # dist_center = torch.norm(bias_x_center, dim=-1, keepdim=True) 
+            # direction = bias_x_center / (dist_center + 1e-7)  
 
             # 计算原始距离
             r_rolled = torch.roll(self.r, shifts=i_shift, dims=0)  # 先在 i 方向滚动
@@ -136,7 +136,7 @@ class MassSpringSystem:
                                 abs(self.spring_YN[t-1]) * direction * (original_dist - dist))#/(1-abs(self.spring_YN[t-1]))
         
         # 添加重力
-        forces[..., 2] += -9.8
+        forces[..., 2] += 9000.8
         
         return forces
     
@@ -167,9 +167,28 @@ class MassSpringSystem:
             # step_loss = torch.sum(torch.abs(rel_dists - avg_dist))
             # loss += step_loss * (t ** 2) * 1e1
             #rel_dists的方差
-            loss += torch.var(rel_dists) * (t ** 2) * 1e2            
-            loss += torch.var(torch.norm(self.v[t,:,j], dim=1))*t**2*1e-2 
+            loss += torch.var(rel_dists) * (t**2) * 1e2            
+            loss += torch.var(torch.norm(self.v[t,:,j], dim=1))*(t**2)*1e-1 
         return loss
+
+def output_spring_para(system):
+    s_para = np.array([system.spring_YP.detach().numpy(), system.spring_YN.detach().numpy(), \
+                       system.dashpot_damping.detach().numpy(), system.drag_damping.detach().numpy()])
+    np.save('spring_para.npy', s_para)
+def load_spring_para(system):
+    #return False
+    try:
+        s_para = np.load('spring_para.npy')
+    except FileNotFoundError:
+        return False
+    if(len(s_para) > 0):
+        system.spring_YP_th = torch.from_numpy(s_para[0])
+        system.spring_YN_th = torch.from_numpy(s_para[1])
+        system.dashpot_damping_th = torch.from_numpy(s_para[2])
+        system.drag_damping_th = torch.from_numpy(s_para[3])
+        return True
+    else:
+        return False
     
 ti.init(arch=ti.cpu)
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
@@ -231,9 +250,10 @@ def main():
         system.dashpot_damping,
         system.drag_damping,
     ], lr=learning_rate)
-    
+
     losses = []
-    spring_YPs = []
+    spring_YPs = []    
+    load_spring_para(system)
     
     max_iter = 100# 最大迭代次数 
     for iter in range(max_iter):
@@ -262,7 +282,7 @@ def main():
         losses.append(loss.item())
         spring_YPs.append(system.spring_YP[max_steps//2].item())       
         
-        if iter % (max_iter//10) == 0:
+        if iter % (max_iter//100) == 0:
             print(f'\nIter={iter}, Loss={loss.item()}')
             print(f'spring_YP={system.spring_YP[max_steps//2].item()}')
             print(f'spring_YN={system.spring_YN[max_steps//2].item()}')
@@ -272,10 +292,11 @@ def main():
         # 更新参数
         optimizer.step()
         
-
+    output_spring_para(system)
     pos_final = [] 
-    for n in range(0, 15):
-        pos_final.append(system.x[max_steps-1,n,1,2].item())
+    for t in range(max_steps):
+        #pos_final.append(system.x[max_steps-1,n,1,2].item())
+        pos_final.append(system.spring_YP[t].item())
 
     # 绘图
     fig, axs = plt.subplots(3)
