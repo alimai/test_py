@@ -182,10 +182,10 @@ def load_spring_para(system):
     except FileNotFoundError:
         return False
     if(len(s_para) > 0):
-        system.spring_YP_th = torch.from_numpy(s_para[0])
-        system.spring_YN_th = torch.from_numpy(s_para[1])
-        system.dashpot_damping_th = torch.from_numpy(s_para[2])
-        system.drag_damping_th = torch.from_numpy(s_para[3])
+        system.spring_YP.data = torch.from_numpy(s_para[0])#.requires_grad_(True)
+        system.spring_YN.data = torch.from_numpy(s_para[1])#.requires_grad_(True)
+        system.dashpot_damping.data = torch.from_numpy(s_para[2])#.requires_grad_(True)
+        system.drag_damping.data = torch.from_numpy(s_para[3])#.requires_grad_(True)
         return True
     else:
         return False
@@ -292,7 +292,6 @@ def main():
         # 更新参数
         optimizer.step()
         
-    output_spring_para(system)
     pos_final = [] 
     for t in range(max_steps):
         #pos_final.append(system.x[max_steps-1,n,1,2].item())
@@ -304,6 +303,7 @@ def main():
     axs[1].plot(spring_YPs)
     axs[2].plot(pos_final)
     plt.show()
+    output_spring_para(system)
 
 if __name__ == '__main__':
     main()
