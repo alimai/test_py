@@ -148,7 +148,7 @@ class MassSpringSystem:
         mask = torch.ones_like(self.v[t])
         mask[0, :] = mask[-1, :] = 0
         
-        self.v[t] = mask * (self.v[t-1] + self.f[t] * dt) / (1.0 + drag_damping_base)
+        self.v[t] = mask * (self.v[t-1] + self.f[t] * dt) / (1.0 + self.drag_damping[t-1])
 
         # 更新位置
         self.x[t] = self.x[t-1] + dt * self.v[t]
@@ -276,7 +276,7 @@ def main():
            system.spring_YP.grad[t] *= system.spring_YP[t].item()**2/loss.item()
            system.spring_YN.grad[t] *= system.spring_YN[t].item()**2/loss.item()
            #system.dashpot_damping.grad[t] *= system.dashpot_damping[t].item()
-           #system.drag_damping.grad[t] *= system.drag_damping[t].item()
+           system.drag_damping.grad[t] *= system.drag_damping[t].item()**2/loss.item()
 
         # 记录数据
         losses.append(loss.item())
@@ -287,7 +287,7 @@ def main():
             print(f'spring_YP={system.spring_YP[max_steps//2].item()}')
             print(f'spring_YN={system.spring_YN[max_steps//2].item()}')
             # print(f'dashpot_damping={system.dashpot_damping[max_steps//2].item()}')
-            # print(f'drag_damping={system.drag_damping[max_steps//2].item():.4e}')
+            print(f'drag_damping={system.drag_damping[max_steps//2].item():.4e}')
 
         # 更新参数
         optimizer.step()
