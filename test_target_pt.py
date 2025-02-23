@@ -174,11 +174,11 @@ class MassSpringSystem:
 def output_spring_para(system):
     s_para = np.array([system.spring_YP.detach().numpy(), system.spring_YN.detach().numpy(), \
                        system.dashpot_damping.detach().numpy(), system.drag_damping.detach().numpy()])
-    np.save('spring_para.npy', s_para)
+    np.save('spring_para_pt.npy', s_para)
 def load_spring_para(system):
     #return False
     try:
-        s_para = np.load('spring_para.npy')
+        s_para = np.load('spring_para_pt.npy')
     except FileNotFoundError:
         return False
     if(len(s_para) > 0):
