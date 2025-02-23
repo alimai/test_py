@@ -293,7 +293,7 @@ def initialize_mass_points(t: ti.i32):
     size_y = n_y * quad_size#size_x * n_y / n_x  # 分布范围   
     index_center_x = 7.5
     for i, j in ti.ndrange(n_x, n_y):# 初始化质点位置
-        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.03 #ti.Vector([0.01,0.01,0.01]) # 随机偏移量
+        random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random() - 0.5]) * 0.03 #ti.Vector([0.01,0.01,0.01]) # 随机偏移量
         x[i, j, t] =[
             i * quad_size - size_x * 0.5 + 0.5 * quad_size,
             j * quad_size - size_y * 0.5 + 0.5 * quad_size,
@@ -534,7 +534,7 @@ if __name__ == '__main__':  # 主函数
     transe_field_data() # for display
 
     window = None      
-    disp_by_step = False#True#
+    disp_by_step = True#False#
     if not TEST_MODE and disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
