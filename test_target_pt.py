@@ -115,12 +115,18 @@ class MassSpringSystem:
             dist = torch.norm(bias_x, dim=-1, keepdim=True)
             direction = bias_x / (dist + 1e-7)
 
-            # #修正力传递方向
-            # rolled_pos_mirror = torch.roll(current_pos, shifts=(-i_shift, -j_shift), dims=(0, 1))   
-            # bias_x_center = rolled_pos_mirror - rolled_pos 
-            # bias_x_center[...,1] = bias_x [...,1]
-            # dist_center = torch.norm(bias_x_center, dim=-1, keepdim=True) 
-            # direction = bias_x_center / (dist_center + 1e-7)  
+            #修正力传递方向
+            rolled_pos_mirror = torch.roll(current_pos, shifts=(-i_shift, -j_shift), dims=(0, 1))   
+            bias_x_center = rolled_pos_mirror - rolled_pos 
+            bias_x_center[...,1] = bias_x [...,1]
+            dist_center = torch.norm(bias_x_center, dim=-1, keepdim=True) 
+            direction_center = bias_x_center / (dist_center + 1e-7)  
+            bias_x_mirror = current_pos - rolled_pos_mirror 
+            bias_x_mirror[...,1] = bias_x [...,1]
+            dist_mirror = torch.norm(bias_x_mirror, dim=-1, keepdim=True) 
+            direction_mirror = bias_x_mirror / (dist_mirror + 1e-7) 
+            direction_normal = (direction+direction_mirror) * 0.5
+            ratio_normal = torch.norm(torch.cross(direction, direction_center, dim = -1))
 
             # 计算原始距离
             r_rolled = torch.roll(self.r, shifts=i_shift, dims=0)  # 先在 i 方向滚动
@@ -132,8 +138,8 @@ class MassSpringSystem:
             #compress_mask = ~stretch_mask
             
             forces += torch.where(stretch_mask,
-                                -abs(self.spring_YP[t-1]) * direction * (dist - original_dist),#/(1-abs(self.spring_YP[t-1]))
-                                abs(self.spring_YN[t-1]) * direction * (original_dist - dist))#/(1-abs(self.spring_YN[t-1]))
+                                -abs(self.spring_YP[t-1]) * (direction_center+direction_normal*ratio_normal) * (dist - original_dist),#/(1-abs(self.spring_YP[t-1]))
+                                abs(self.spring_YN[t-1]) * (direction_center+direction_normal*ratio_normal) * (original_dist - dist))#/(1-abs(self.spring_YN[t-1]))
         
         # 添加重力
         forces[..., 2] += 9000.8
@@ -237,9 +243,10 @@ def run_windows(window, n, system, keep = False):
     if keep:
         input()
 
-def main():
-    window = None      
+def main():   
+    max_iter = 1000# 最大迭代次数 
     disp_by_step = False#True#
+    window = None   
     if disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
@@ -255,7 +262,6 @@ def main():
     spring_YPs = []    
     load_spring_para(system)
     
-    max_iter = 100# 最大迭代次数 
     for iter in range(max_iter):
         optimizer.zero_grad()        
         system.initialize_mass_points()
