@@ -51,7 +51,6 @@ n_y = 3  # 控制点列数
 tooth_size = 0.01#牙齿大小基准
 
 
-bending_springs = True  # 是否使用弯曲弹簧
 spring_offsets =[] #弹簧偏移量---算子计算范围#不能在核函数内初始化
 r = ti.field(dtype=ti.f32, shape=(n_x, n_y))  # 牙齿大小
 
@@ -313,17 +312,14 @@ def initialize_mass_points(t: ti.i32):
             r[i,j] += tooth_size * 0.5
 
 def add_spring_offsets():
-    if bending_springs:
-        for i in range(-1, 2):
-                j=0#for j in range(-1, 2):#暂不考虑Y方向
-                if (i, j) != (0, 0) :
-                    spring_offsets.append(ti.Vector([i, j]))  # 添加弯曲弹簧偏移量
-
-    else:
-        for i in range(-2, 3):
-                j=0#for j in range(-2, 3):#暂不考虑Y方向
-                if (i, j) != (0, 0) and abs(i) + abs(j) <= 2:
-                    spring_offsets.append(ti.Vector([i, j]))  # 添加普通弹簧偏移量
+    for i in range(-1, 2):
+            j=0#for j in range(-1, 2):#暂不考虑Y方向
+            if (i, j) != (0, 0) :
+                spring_offsets.append(ti.Vector([i, j]))  # 添加一阶弹簧偏移量
+    # for i in range(-2, 3):
+    #         j=0#for j in range(-2, 3):#暂不考虑Y方向
+    #         if (i, j) != (0, 0) and abs(i) + abs(j) <= 2:
+    #             spring_offsets.append(ti.Vector([i, j]))  # 添加二阶弹簧偏移量
 
 
 

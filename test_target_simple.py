@@ -172,10 +172,10 @@ def initialize_mass_points(t: ti.i32):
 
 
 def add_spring_offsets():
-        for i in range(-2, 3):
-                j=0#for j in range(-2, 3):#暂不考虑Y方向
-                if (i, j) != (0, 0) and abs(i) + abs(j) <= 2:
-                    spring_offsets.append(ti.Vector([i, j]))  # 添加普通弹簧偏移量
+        for i in range(-1, 2):
+                j=0#for j in range(-1, 2):#暂不考虑Y方向
+                if (i, j) != (0, 0) :
+                    spring_offsets.append(ti.Vector([i, j]))
 
 
 

@@ -53,7 +53,7 @@ class MassSpringSystem:
         for i in range(-1, 2):
                 j=0#for j in range(-1, 2):#暂不考虑Y方向
                 if (i, j) != (0, 0) :
-                    offsets.append(torch.tensor([i, j]))  # 添加弯曲弹簧偏移量
+                    offsets.append(torch.tensor([i, j]))  # 添加一阶弹簧偏移量
         return offsets
     
     def gen_start_pos(self):
