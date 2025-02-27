@@ -327,47 +327,6 @@ def add_spring_offsets():
 
 
 
-@ti.func
-def linear_interpolation(p: ti.template(), gradient: ti.template())->ti.f32:
-    base = ti.floor(p, ti.i32)
-    offset = p - base
-
-    field_inter = 0.0
-    gradient = ti.Vector([0.0,0.0,0.0])
-    for i, j, k in ti.ndrange(2, 2, 2):
-        neighbor = base + ti.Vector([i, j, k])
-        value = field1[neighbor]
-        if abs(value) > field_max[None]: value = field_max[None]
-        # 计算标量权重
-        weight = (1 - offset.x + (offset.x * 2 - 1) * i) * \
-                 (1 - offset.y + (offset.y * 2 - 1) * j) * \
-                 (1 - offset.z + (offset.z * 2 - 1) * k)
-        field_inter += value * weight    
-    
-        # 计算梯度权重---容易梯度爆炸！！！
-        # 原因应为ti.floor支持不好，某些时候插值结果只依赖base
-        # 不包含其它参数
-        # weight_x = (2 * i - 1) * \
-        #          (1 - offset.y + (offset.y * 2 - 1) * j) * \
-        #          (1 - offset.z + (offset.z * 2 - 1) * k)
-        # weight_y = (1 - offset.x + (offset.x * 2 - 1) * i) * \
-        #          (2 * j - 1) * \
-        #          (1 - offset.z + (offset.z * 2 - 1) * k)
-        # weight_z = (1 - offset.x + (offset.x * 2 - 1) * i) * \
-        #          (1 - offset.y + (offset.y * 2 - 1) * j) * \
-        #          (2 * k - 1)
-        # gradient += value * ti.Vector([weight_x, weight_y, weight_z]) 
-
-        #offset2 = p - neighbor
-        weight_x = (2 * i - 1)# * (1 - offset2.y) * (1 - offset2.z)
-        weight_y = (2 * j - 1)# * (1 - offset2.x) * (1 - offset2.z)
-        weight_z = (2 * k - 1)# * (1 - offset2.x) * (1 - offset2.y) 
-        gradient += value * ti.Vector([weight_x, weight_y, weight_z])
-    
-    return field_inter
-
-
-
 @ti.kernel
 def substep(t: ti.i32):     
     #gravity = ti.Vector([0, 0, -9.8])  # 重力加速度
@@ -407,25 +366,9 @@ def substep(t: ti.i32):
                 #bias_v = v[n] - v[m]
                 #force_cur += -dashpot_damping[t-1] * direct_mn * bias_v.dot(direct_mn) * (r[n[0],n[1]] + r[m[0], m[1]])#tooth_size
                 force += force_cur
+                f[index] = force
 
-        # 场力
-        pos = (x[n]+bg_size * 0.5)/bg_quad_size
-        for ii in ti.static(range(3)):
-            if abs(pos[ii]-int(pos[ii]))<1e-3: pos[ii] += 1e-3#防止pos[ii]为整数
-            pos[ii] = min(max(1e-3, pos[ii]), bg_n[ii]-1-1e-3)#限制边界
-        grad_field = ti.Vector([0.0,0.0,0.0])        
-        field_inter = linear_interpolation(pos, grad_field)
-        if force.norm() > 0 and grad_field.norm() > 0:
-            direct_f1=force.normalized()
-            direct_f2 = ti.Vector([0.0,1.0,0.0])
-            direct_f3 = (direct_f1.cross(direct_f2)).normalized()
-            if direct_f3.dot(grad_field) < 0:
-                direct_f3 *= -1.0
-            grad_field = grad_field.norm() * direct_f3
-        #print(field_inter, grad_field, -grad_field*field_inter*field_damping[None], force)
-        force += -grad_field*field_inter*field_damping[None]
-        l[index] = field_inter
-        f[index] = force
+        f[index] += ti.Vector([0.0, 0.0, 9.8])
 
     ti.sync()
     for i, j in ti.ndrange(n_x, n_y):       
@@ -483,7 +426,7 @@ def compute_loss():
     loss[None] = 0.0
     calcute_loss_dist(j)
     #print(loss[None])
-    calcute_loss_x(j) 
+    #calcute_loss_x(j) 
     #print(loss[None])
     calcute_loss_v(j) 
  
