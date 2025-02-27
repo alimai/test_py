@@ -174,7 +174,7 @@ class MassSpringSystem:
             # loss += step_loss * (t ** 2) * 1e1
             #rel_dists的方差
             loss += torch.var(rel_dists) * (t**2) * 1e2            
-            loss += torch.var(torch.norm(self.v[t,:,j], dim=1))*(t**2)*1e-1 
+            loss += torch.sum(torch.norm(self.v[t,:,j], dim=1))*(t**2)*1e-1 
         return loss
 
 def output_spring_para(system):
@@ -244,8 +244,8 @@ def run_windows(window, n, system, keep = False):
         input()
 
 def main():   
-    max_iter = 1000# 最大迭代次数 
-    disp_by_step = False#True#
+    max_iter = 100# 最大迭代次数 
+    disp_by_step = True#False#
     window = None   
     if disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
@@ -260,7 +260,7 @@ def main():
 
     losses = []
     spring_YPs = []    
-    load_spring_para(system)
+    #load_spring_para(system)
     
     for iter in range(max_iter):
         optimizer.zero_grad()        
@@ -288,7 +288,7 @@ def main():
         losses.append(loss.item())
         spring_YPs.append(system.spring_YP[max_steps//2].item())       
         
-        if iter % (max_iter//100) == 0:
+        if iter % (max_iter//50) == 0:
             print(f'\nIter={iter}, Loss={loss.item()}')
             print(f'spring_YP={system.spring_YP[max_steps//2].item()}')
             print(f'spring_YN={system.spring_YN[max_steps//2].item()}')
@@ -309,7 +309,7 @@ def main():
     axs[1].plot(spring_YPs)
     axs[2].plot(pos_final)
     plt.show()
-    output_spring_para(system)
+    #output_spring_para(system)
 
 if __name__ == '__main__':
     main()

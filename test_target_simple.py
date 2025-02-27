@@ -118,8 +118,6 @@ def re_update_grad(iter: ti.i32)->ti.f32:
         ti.sync()
         if iter <= 100:
             grad_max[None] = max(grad_max[None], grad_max_cur)
-            if(grad_max[None] > loss[None]):
-                grad_max[None] = loss[None]
         re_update_grad_core(grad_max_cur)
 
     return grad_sum_total
@@ -152,7 +150,6 @@ def initialize_mass_points(t: ti.i32):
     size_x = ellipse_short * 2  # 分布范围     
     quad_size = size_x / (n_x+1) # +1使X分布不对称
     size_y = n_y * quad_size#size_x * n_y / n_x  # 分布范围   
-    index_center_x = 7.5
     for i, j in ti.ndrange(n_x, n_y):# 初始化质点位置
         random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random()]) * 0.03 #ti.Vector([0.01,0.01,0.01]) # 随机偏移量
         x[i, j, t] =[
@@ -166,12 +163,12 @@ def initialize_mass_points(t: ti.i32):
             x[i, j, t] += random_offset  # 添加随机偏移量
         v[i, j, t] =[0, 0, 0]  # 初始化质点速度
         r[i, j] = tooth_size #初始化半径
-        if abs(i - index_center_x)  > 2:
-            r[i,j] += tooth_size * 0.5
-        if abs(i - index_center_x)  > 3:
-            r[i,j] += tooth_size * 0.5
-        if abs(i - index_center_x)  > 5:
-            r[i,j] += tooth_size * 0.5
+        # if abs(i - index_center_x)  > 2:
+        #     r[i,j] += tooth_size * 0.5
+        # if abs(i - index_center_x)  > 3:
+        #     r[i,j] += tooth_size * 0.5
+        # if abs(i - index_center_x)  > 5:
+        #     r[i,j] += tooth_size * 0.5
 
 
 def add_spring_offsets():
@@ -197,18 +194,30 @@ def substep(t: ti.i32):
             if 0 <= m[0] < n_x and 0 <= m[1] < n_y:        
                 force_cur = ti.Vector([0.0, 0.0, 0.0])
                 bias_x = x[n] - x[m]
+                direct_mn = bias_x.normalized() 
+
                 current_dist = bias_x.norm() - (r[n[0],n[1]] + r[m[0], m[1]])*0.5
                 original_dist = spring_offset.norm() * (r[n[0],n[1]] + r[m[0], m[1]])*0.5 #tooth_size
-
-                direct_mn = bias_x.normalized() 
+                
+                direction_center = direct_mn
+                direction_normal = ti.Vector([0.0,0.0,0.0])
+                ratio_normal = 0.0
+                m_mirror = n - spring_offset    
+                if 0 <= m_mirror[0] < n_x and 0 <= m_mirror[1] < n_y: #重定义方向
+                    bias_center = x[m_mirror]-x[m]
+                    direction_center = bias_center.normalized()
+                    bias_mirror = x[n] - x[m_mirror]
+                    direction_mirror = bias_mirror.normalized()
+                    direction_normal = (direct_mn+direction_mirror) * 0.5
+                    ratio_normal = ti.math.cross(direct_mn, direction_center).norm()
                     
                 #弹簧力
                 if current_dist > original_dist:
                     #force += -spring_YP * direct_mn * (current_dist / original_dist - 1)#**2
-                    force_cur += -spring_YP[t-1] * direct_mn * (current_dist - original_dist)#**2
+                    force_cur += -spring_YP[t-1] * (direction_center+direction_normal*ratio_normal) * (current_dist - original_dist)#**2
                 else:
                     #force += spring_YN * direct_mn * (1 - current_dist / original_dist)#**0.5
-                    force_cur += spring_YN[t-1] * direct_mn * (original_dist - current_dist)#**0.5
+                    force_cur += spring_YN[t-1] * (direction_center+direction_normal*ratio_normal) * (original_dist - current_dist)#**0.5
                 force += force_cur
     
         force += ti.Vector([0, 0, 9000.8])  # 重力加速度
@@ -244,21 +253,68 @@ def calcute_loss_dist(j: ti.i32):
         avg_bias /= (n_x-1)
         loss_step = 0.0
         for i in ti.static(range(n_x-1)):
-            loss_step += abs(list_dist[i]-avg_bias)
-        loss[None] += loss_step*t**2*1e1
+            loss_step += (list_dist[i]-avg_bias)*(list_dist[i]-avg_bias)
+        loss[None] += loss_step/(n_x-1)*t**2*1e2
 
+@ti.kernel
+def calcute_loss_v(j: ti.i32):
+    for i, t in ti.ndrange(n_x, max_steps):
+        loss[None] += v[i,j,t].norm()*t**2*1e-1
 
 def compute_loss():
     j = n_y//2
     loss[None] = 0.0
     calcute_loss_dist(j)
     #print(loss[None])
+    calcute_loss_v(j)
     #print(loss[None])
- 
+    
+point = ti.Vector.field(3, dtype=float, shape=1) # for display 
+def run_windows(window, n, keep = False):
+    if window is None:
+        window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
+    canvas = window.get_canvas()
+    canvas.set_background_color((0.3, 0.3, 0.3))  # 设置背景颜色
+    scene = window.get_scene()
+    camera = ti.ui.make_camera()
+
+    if n < max_steps*0.5:
+        camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+    else:
+        camera.position(2.0 * np.sin((n-max_steps*0.5) / max_steps *np.pi*4),
+                        2.0 * np.cos((n-max_steps*0.5) / max_steps *np.pi*4),
+                        0.0)  # 设置相机位置
+    camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+    camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
+    camera.up(0, 0, 1)
+    scene.set_camera(camera)
+
+    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))  # 设置点光源
+    scene.ambient_light((0.5, 0.5, 0.5))  # 设置环境光
+    for i in range(4):
+        point[0] =[0.0, 0.0, 0.0]
+        color =[0.0, 0.0, 0.0]
+        if i < 3:
+            point[0][i] = 0.05
+            color[i] = 1.0
+        scene.particles(point, radius=0.01 if i!=3 else 0.02, color=tuple(color))
+    for i in range(n_x):
+        point[0] = x[i, 1, n]
+        scene.particles(point, radius=r[i,1]+0.02, color=(0.5, 0.42, 0.8))
+
+    canvas.scene(scene)
+    window.show()
+    if keep:
+        input()
 
 if __name__ == '__main__':  # 主函数 
 
     max_iter = 100# 最大迭代次数 
+
+    window = None      
+    disp_by_step = True#False#
+    if disp_by_step:
+        window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
     add_spring_offsets()
     initialize_spring_para2()        
@@ -278,6 +334,10 @@ if __name__ == '__main__':  # 主函数
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
+                if disp_by_step:
+                    if iter % (max_iter//10) == 0: #display 
+                        if n % 10 == 1:#if n % (max_steps-1) == 0: 
+                            run_windows(window, n)
             compute_loss()
   
         
@@ -301,10 +361,8 @@ if __name__ == '__main__':  # 主函数
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
     spring_YPs_2=[]
-    # for t in range(max_steps-1):        
-    #     spring_YPs_2.append(spring_YP[t])
-    for n in range(n_x):     
-        spring_YPs_2.append(x[n,1,max_steps-1][2])
+    for t in range(max_steps-1):        
+        spring_YPs_2.append(spring_YP[t])
     fig,axs = plt.subplots(3)
     axs[0].plot(losses)  # 绘制损失曲线
     axs[1].plot(spring_YPs)  # 绘制损失曲线
