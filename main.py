@@ -1,11 +1,12 @@
 import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
-from torchvision.transforms import transforms
 from un import Unet
+import numpy as np
+# for data trans
+from torchvision.transforms import transforms
 from DataHelper import *
 from tqdm import tqdm
-import numpy as np
 #import skimage.io as io
 from skimage import io
 
@@ -116,9 +117,5 @@ def test():
 
 
 if __name__ == '__main__':
-    print("开始训练")
     train()
-    print("训练完成，保存模型")
-    print("-"*20)
-    print("开始预测")
     test()
