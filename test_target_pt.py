@@ -126,7 +126,9 @@ class MassSpringSystem:
             dist_mirror = torch.norm(bias_x_mirror, dim=-1, keepdim=True) 
             direction_mirror = bias_x_mirror / (dist_mirror + 1e-7) 
             direction_normal = (direction+direction_mirror) * 0.5
-            ratio_normal = torch.norm(torch.cross(direction, direction_center, dim = -1))
+            #计算direction和direction_center每个vector成员的cross值
+            cross_product = torch.cross(direction, direction_center, dim=2)  # dim=2表示在第3维(xyz)上计算叉积
+            ratio_normal = torch.norm(cross_product, dim=2, keepdim=True)   # 计算叉积向量的长度
 
             # 计算原始距离
             r_rolled = torch.roll(self.r, shifts=i_shift, dims=0)  # 先在 i 方向滚动
@@ -135,13 +137,13 @@ class MassSpringSystem:
         
             # 计算弹力
             stretch_mask = dist > original_dist
-            #compress_mask = ~stretch_mask
-            
+            #compress_mask = ~stretch_mask            
             forces += torch.where(stretch_mask,
                                 -abs(self.spring_YP[t-1]) * (direction_center+direction_normal*ratio_normal) * (dist - original_dist),#/(1-abs(self.spring_YP[t-1]))
                                 abs(self.spring_YN[t-1]) * (direction_center+direction_normal*ratio_normal) * (original_dist - dist))#/(1-abs(self.spring_YN[t-1]))
         
         # 添加重力
+        #forces += torch.tensor([0.0, 0.0, 9000.8], device=device)  # 对每个力向量添加重力向量
         forces[..., 2] += 9000.8
         
         return forces
@@ -167,13 +169,11 @@ class MassSpringSystem:
             biass = self.x[t, 1:, j] - self.x[t, :-1, j]
             dists = torch.norm(biass, dim=1)
             target_dists = self.r[1:, j] + self.r[:-1, j]
-            rel_dists = torch.abs(dists - target_dists)
+            rel_dists = dists - target_dists
             
-            # avg_dist = torch.mean(rel_dists)
-            # step_loss = torch.sum(torch.abs(rel_dists - avg_dist))
-            # loss += step_loss * (t ** 2) * 1e1
-            #rel_dists的方差
-            loss += torch.var(rel_dists) * (t**2) * 1e2            
+            avg_dist = torch.mean(rel_dists)
+            loss += torch.sum((rel_dists - avg_dist)**2) * (t**2) * 1e2
+            #loss += torch.var(rel_dists) * (t**2) * 1e2 ##rel_dists的方差,精度太低        
             loss += torch.sum(torch.norm(self.v[t,:,j], dim=1))*(t**2)*1e-1 
         return loss
 
@@ -296,7 +296,7 @@ def main():
             print(f'drag_damping={system.drag_damping[max_steps//2].item():.4e}')
 
         # 更新参数
-        optimizer.step()
+        #optimizer.step()
         
     pos_final = [] 
     for t in range(max_steps):

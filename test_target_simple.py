@@ -239,27 +239,29 @@ def substep(t: ti.i32):
     for i, j in ti.ndrange(n_x, n_y):#for n in ti.grouped(x):#core        
         index = ti.Vector([i, j, t])
         n = ti.Vector([i, j, t-1])
-        x[index] = (x[n] + dt * v[index]) 
+        x[index] = x[n] + dt * v[index] 
 
 
 @ti.kernel
 def calcute_loss_dist(j: ti.i32): 
     for t in range(max_steps):
-        avg_bias = 0.0       
         list_dist = ti.Vector([0.0] * (n_x-1))
-        for i in ti.static(range(n_x-1)):
+        for i in ti.static(range(n_x-1)):#累加内层static必须
             list_dist[i] = (x[i, j, t] - x[i+1, j, t]).norm() - (r[i,j]+r[i+1,j])
-            avg_bias += list_dist[i]
-        avg_bias /= (n_x-1)
         loss_step = 0.0
-        for i in ti.static(range(n_x-1)):
+        avg_bias = list_dist.sum()/(n_x-1)
+        for i in ti.static(range(n_x-1)):#累加内层static必须
             loss_step += (list_dist[i]-avg_bias)*(list_dist[i]-avg_bias)
-        loss[None] += loss_step/(n_x-1)*t**2*1e2
+        loss[None] += loss_step*t**2*1e2
 
 @ti.kernel
 def calcute_loss_v(j: ti.i32):
-    for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += v[i,j,t].norm()*t**2*1e-1
+    for t in range(max_steps):
+        for i in ti.static(range(n_x)):#累加内层static必须
+            loss[None] += v[i,j,t].norm()*t**2*1e-1
+    # 下边这种方式累加有问题
+    # for i, t in ti.ndrange(n_x, max_steps):
+    #     loss[None] += v[i,j,t].norm()*t**2*1e-1
 
 def compute_loss():
     j = n_y//2
@@ -312,7 +314,7 @@ if __name__ == '__main__':  # 主函数
     max_iter = 100# 最大迭代次数 
 
     window = None      
-    disp_by_step = True#False#
+    disp_by_step = False#True#
     if disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
@@ -343,11 +345,11 @@ if __name__ == '__main__':  # 主函数
         
         learning_rate *= (1.0 - alpha)
         grad_sum_total = re_update_grad(iter)
-        if not np.isnan(grad_sum_total):
-            update_spring_para2(iter)#update_spring_para_th()#
-        else:
-            print(loss[None], grad_sum_total)
-            continue#break#       
+        # if not np.isnan(grad_sum_total):
+        #     update_spring_para2(iter)#update_spring_para_th()#
+        # else:
+        #     print(loss[None], grad_sum_total)
+        #     continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
         
