@@ -464,12 +464,14 @@ def calcute_loss_dist(j: ti.i32):
 
 @ti.kernel
 def calcute_loss_x(j: ti.i32):
-    for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += l[i,j,t]*t**2*1e-2
+    for t in range(max_steps):
+        for i in ti.static(range(n_x)):
+            loss[None] += l[i,j,t]*t**2*1e-2
 @ti.kernel
 def calcute_loss_v(j: ti.i32):
-    for i, t in ti.ndrange(n_x, max_steps):
-        loss[None] += v[i,j,t].norm()*t**2*1e-3 
+    for t in range(max_steps):
+        for i in ti.static(range(n_x)):
+            loss[None] += v[i,j,t].norm()*t**2*1e-3 
 
 
 def compute_loss():
