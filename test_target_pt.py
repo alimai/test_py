@@ -131,7 +131,7 @@ class MassSpringSystem:
             # 计算原始距离
             r_rolled = torch.roll(self.r, shifts=i_shift, dims=0)  # 先在 i 方向滚动
             r_rolled = torch.roll(r_rolled, shifts=j_shift, dims=1)  # 再在 j 方向滚动
-            original_dist = (torch.norm(offset.float()) * (self.r + r_rolled) * 0.5).unsqueeze(-1)
+            original_dist = (torch.norm(offset.float()) * (self.r + r_rolled)).unsqueeze(-1)
         
             # 计算弹力
             stretch_mask = dist > original_dist
@@ -245,7 +245,7 @@ def run_windows(window, n, system, keep = False):
 
 def main():   
     max_iter = 100# 最大迭代次数 
-    disp_by_step = True#False#
+    disp_by_step = False#True#
     window = None   
     if disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口

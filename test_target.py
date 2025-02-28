@@ -233,8 +233,6 @@ def re_update_grad(iter: ti.i32)->ti.f32:
         ti.sync()
         if iter <= 100:
             grad_max[None] = max(grad_max[None], grad_max_cur)
-            if(grad_max[None] > loss[None]):
-                grad_max[None] = loss[None]
         re_update_grad_core(grad_max_cur)
 
     return grad_sum_total
@@ -381,8 +379,8 @@ def substep(t: ti.i32):
             if 0 <= m[0] < n_x and 0 <= m[1] < n_y:        
                 force_cur = ti.Vector([0.0, 0.0, 0.0])
                 bias_x = x[n] - x[m]
-                current_dist = bias_x.norm() - (r[n[0],n[1]] + r[m[0], m[1]])*0.5
-                original_dist = spring_offset.norm() * (r[n[0],n[1]] + r[m[0], m[1]])*0.5 #tooth_size
+                current_dist = bias_x.norm()
+                original_dist = spring_offset.norm() * (r[n[0],n[1]] + r[m[0], m[1]]) #tooth_size
 
                 direct_mn = bias_x.normalized() 
                 m_mirror = n - spring_offset    
@@ -530,7 +528,7 @@ if __name__ == '__main__':  # 主函数
     transe_field_data() # for display
 
     window = None      
-    disp_by_step = True#False#
+    disp_by_step = False#True#
     if not TEST_MODE and disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 

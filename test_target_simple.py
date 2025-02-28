@@ -196,8 +196,8 @@ def substep(t: ti.i32):
                 bias_x = x[n] - x[m]
                 direct_mn = bias_x.normalized() 
 
-                current_dist = bias_x.norm() - (r[n[0],n[1]] + r[m[0], m[1]])*0.5
-                original_dist = spring_offset.norm() * (r[n[0],n[1]] + r[m[0], m[1]])*0.5 #tooth_size
+                current_dist = bias_x.norm()
+                original_dist = spring_offset.norm() * (r[n[0],n[1]] + r[m[0], m[1]]) #tooth_size
                 
                 direction_center = direct_mn
                 direction_normal = ti.Vector([0.0,0.0,0.0])
