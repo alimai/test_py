@@ -345,11 +345,11 @@ if __name__ == '__main__':  # 主函数
         
         learning_rate *= (1.0 - alpha)
         grad_sum_total = re_update_grad(iter)
-        # if not np.isnan(grad_sum_total):
-        #     update_spring_para2(iter)#update_spring_para_th()#
-        # else:
-        #     print(loss[None], grad_sum_total)
-        #     continue#break#       
+        if not np.isnan(grad_sum_total):
+            update_spring_para2(iter)#update_spring_para_th()#
+        else:
+            print(loss[None], grad_sum_total)
+            continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
         

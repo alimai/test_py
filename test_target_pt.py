@@ -279,10 +279,10 @@ def main():
         loss = system.compute_loss()
         loss.backward(retain_graph=True)
         for t in range(0, max_steps):
-           system.spring_YP.grad[t] *= system.spring_YP[t].item()**2/loss.item()
-           system.spring_YN.grad[t] *= system.spring_YN[t].item()**2/loss.item()
+           system.spring_YP.grad[t] *= system.spring_YP[t].item()
+           system.spring_YN.grad[t] *= system.spring_YN[t].item()
            #system.dashpot_damping.grad[t] *= system.dashpot_damping[t].item()
-           system.drag_damping.grad[t] *= system.drag_damping[t].item()**2/loss.item()
+           system.drag_damping.grad[t] *= system.drag_damping[t].item()
 
         # 记录数据
         losses.append(loss.item())
@@ -296,7 +296,7 @@ def main():
             print(f'drag_damping={system.drag_damping[max_steps//2].item():.4e}')
 
         # 更新参数
-        #optimizer.step()
+        optimizer.step()
         
     pos_final = [] 
     for t in range(max_steps):
