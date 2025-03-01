@@ -223,6 +223,7 @@ def output_spring_para(system):
     np.save('spring_para_pt.npy', s_para)
 def load_spring_para(system):
     #return False
+    global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
     try:
         s_para = np.load('spring_para_pt.npy')
     except FileNotFoundError:
@@ -232,6 +233,11 @@ def load_spring_para(system):
         system.log_spring_YN.data = torch.from_numpy(s_para[1])#.requires_grad_(True)
         system.log_dashpot_damping.data = torch.from_numpy(s_para[2])#.requires_grad_(True)
         system.log_drag_damping.data = torch.from_numpy(s_para[3])#.requires_grad_(True)
+
+        spring_YP_th = torch.from_numpy(s_para[0])
+        spring_YN_th = torch.from_numpy(s_para[1])
+        dashpot_damping_th = torch.from_numpy(s_para[2])
+        drag_damping_th = torch.from_numpy(s_para[3])
         return True
     else:
         return False
@@ -300,7 +306,7 @@ def main():
 
     losses = []
     spring_YPs = []    
-    #load_spring_para(system)
+    load_spring_para(system)
     
     for iter in range(max_iter):
         optimizer.zero_grad()        
