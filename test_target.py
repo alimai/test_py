@@ -213,6 +213,7 @@ def initialize_spring_para():
 
 @ti.kernel
 def initialize_spring_para3():
+    field_damping[None] = field_damping_base
     for t in range(max_steps):
         log_spring_YP[t]= ti.math.log(spring_YP_base)  
         log_spring_YN[t] = ti.math.log(spring_YN_base)  
@@ -570,8 +571,7 @@ def run_windows(window, n, keep = False):
         input()
 
 if __name__ == '__main__':  # 主函数 
-
-    max_iter = 200# 最大迭代次数 
+    max_iter = 500# 最大迭代次数 
     transe_field_data() # for display
 
     window = None      
@@ -581,9 +581,9 @@ if __name__ == '__main__':  # 主函数
 
     add_field_offsets()
     add_spring_offsets()
-    initialize_spring_para()        
-    #load_spring_para3()    
-    #update_original_spring_para()#just for following print
+    initialize_spring_para3()        
+    #load_spring_para3()   
+    update_original_spring_para()#just for following print
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
