@@ -10,7 +10,7 @@ ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-6  # 学习率
+learning_rate = 1e-1  # 学习率
 alpha = 1e-3  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -70,6 +70,12 @@ ti.root.lazy_grad()
 #lay2.lazy_grad()
 grad_max = ti.field(dtype=ti.f32, shape=())
 
+spring_YP_th = torch.tensor([np.log(np.float32(spring_YP_base))]*max_steps, requires_grad=True)
+spring_YN_th = torch.tensor([np.log(np.float32(spring_YN_base))]*max_steps, requires_grad=True)
+dashpot_damping_th = torch.tensor([np.log(np.float32(dashpot_damping_base))]*max_steps, requires_grad=True)
+drag_damping_th = torch.tensor([np.log(np.float32(drag_damping_base))]*max_steps, requires_grad=True)
+params = [spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th]
+optimizer = torch.optim.AdamW(params, lr=learning_rate, weight_decay=1e-4)#Adam#SGD#AdamW#
 
 def output_spring_para():
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
@@ -213,6 +219,30 @@ def update_spring_para3(iter: ti.i32)->ti.f32:
             log_spring_YN[t] += -learning_rate * spring_YN_grad[t]# / batch_size#spring_YN.grad[t]
             log_dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t]# / batch_size#dashpot_damping.grad[t]
             log_drag_damping[t] += -learning_rate * drag_damping_grad[t]# / batch_size#drag_damping.grad[t]
+    return 0.0
+
+#非ti.kernel#函数
+def update_spring_para_th()->float:
+    optimizer.zero_grad()
+    spring_YP_th.grad = log_spring_YP.grad.to_torch()
+    spring_YN_th.grad = log_spring_YN.grad.to_torch()
+    dashpot_damping_th.grad = log_dashpot_damping.grad.to_torch()
+    drag_damping_th.grad = log_drag_damping.grad.to_torch()
+    
+    # # 记录更新前的梯度值用于返回
+    # grad_sum = (abs(spring_YP_th.grad).sum() + 
+    #             abs(spring_YN_th.grad).sum() + 
+    #             abs(dashpot_damping_th.grad).sum() + 
+    #             abs(drag_damping_th.grad).sum()).item()
+    # print(grad_sum)
+
+    #更新参数
+    optimizer.step()
+
+    log_spring_YP.from_torch(spring_YP_th)
+    log_spring_YN.from_torch(spring_YN_th)
+    log_dashpot_damping.from_torch(dashpot_damping_th)
+    log_drag_damping.from_torch(drag_damping_th)
     return 0.0
 
 @ti.kernel
@@ -388,7 +418,7 @@ if __name__ == '__main__':
 
     add_spring_offsets()
     initialize_spring_para3()        
-    load_spring_para()
+    #load_spring_para()
     update_original_spring_para()#just for following print
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
@@ -414,7 +444,7 @@ if __name__ == '__main__':
   
         
         learning_rate *= (1.0 - alpha)
-        grad_sum_total = update_spring_para3(iter)#update_spring_para_th()#
+        grad_sum_total = update_spring_para_th()#update_spring_para3(iter)#
         if np.isnan(grad_sum_total):
             print(loss[None], grad_sum_total)
             continue#break#       
