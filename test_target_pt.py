@@ -30,24 +30,40 @@ batch_size = 5
 
 class MassSpringSystem:
     def __init__(self):
-         # 创建参数张量
-        self.spring_YP = torch.full((max_steps,), spring_YP_base, device=device, requires_grad=True)
-        self.spring_YN = torch.full((max_steps,), spring_YN_base, device=device, requires_grad=True)
-        self.dashpot_damping = torch.full((max_steps,), dashpot_damping_base, device=device, requires_grad=True)
-        self.drag_damping = torch.full((max_steps,), drag_damping_base, device=device, requires_grad=True)
+        # 创建对数空间的参数张量
+        self.log_spring_YP = torch.log(torch.full((max_steps,), spring_YP_base, device=device)).requires_grad_(True)
+        self.log_spring_YN = torch.log(torch.full((max_steps,), spring_YN_base, device=device)).requires_grad_(True)
+        self.log_dashpot_damping = torch.log(torch.full((max_steps,), dashpot_damping_base, device=device)).requires_grad_(True)
+        self.log_drag_damping = torch.log(torch.full((max_steps,), drag_damping_base, device=device)).requires_grad_(True)
         
+        # 创建原始参数张量（这些将由update_parameters更新）
+        self.spring_YP = torch.zeros((max_steps,), device=device)#, requires_grad=True)
+        self.spring_YN = torch.zeros((max_steps,), device=device)#, requires_grad=True)
+        self.dashpot_damping = torch.zeros((max_steps,), device=device)#, requires_grad=True)
+        self.drag_damping = torch.zeros((max_steps,), device=device)#, requires_grad=True)
         
-        # 创建状态张量，这些不需要梯度
-        self.x = torch.zeros((max_steps, n_x, n_y, 3), device=device)#, requires_grad=True)
-        self.v = torch.zeros((max_steps, n_x, n_y, 3), device=device)#, requires_grad=True)
-        self.f = torch.zeros((max_steps, n_x, n_y, 3), device=device)#, requires_grad=True)
+        # 创建状态张量
+        self.x = torch.zeros((max_steps, n_x, n_y, 3), device=device)
+        self.v = torch.zeros((max_steps, n_x, n_y, 3), device=device)
+        self.f = torch.zeros((max_steps, n_x, n_y, 3), device=device)
     
         # 创建半径张量
         self.r = torch.full((n_x, n_y), tooth_size, device=device)
         
         # 创建弹簧偏移列表
         self.spring_offsets = self._create_spring_offsets()
-        
+
+    def update_parameters(self):
+        # 从log空间转换回原始参数，保持梯度链接
+        # self.spring_YP = torch.clamp(torch.exp(self.log_spring_YP), min=1e2, max=1e8)
+        # self.spring_YN = torch.clamp(torch.exp(self.log_spring_YN), min=1e2, max=1e8)
+        # self.dashpot_damping = torch.clamp(torch.exp(self.log_dashpot_damping), min=1e-1, max=1e3)
+        # self.drag_damping = torch.clamp(torch.exp(self.log_drag_damping), min=1e-2, max=1e2)
+        self.spring_YP = torch.exp(self.log_spring_YP)
+        self.spring_YN = torch.exp(self.log_spring_YN)
+        self.dashpot_damping = torch.exp(self.log_dashpot_damping)
+        self.drag_damping = torch.exp(self.log_drag_damping)
+
     def _create_spring_offsets(self):
         offsets = []
         for i in range(-1, 2):
@@ -251,12 +267,13 @@ def main():
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
     system = MassSpringSystem()
-    optimizer = torch.optim.SGD([
-        system.spring_YP,
-        system.spring_YN,
-        system.dashpot_damping,
-        system.drag_damping,
-    ], lr=learning_rate)
+    # 使用AdamW优化器
+    optimizer = torch.optim.AdamW([#Adam([#SGD([#
+        system.log_spring_YP,
+        system.log_spring_YN,
+        system.log_dashpot_damping,
+        system.log_drag_damping,
+    ], lr=learning_rate, weight_decay=1e-4)
 
     losses = []
     spring_YPs = []    
@@ -265,6 +282,7 @@ def main():
     for iter in range(max_iter):
         optimizer.zero_grad()        
         system.initialize_mass_points()
+        system.update_parameters()    # 每次迭代前更新实际参数值
 
         # 前向传播
         #with torch.set_grad_enabled(True):
@@ -278,11 +296,6 @@ def main():
         # 计算损失并反向传播
         loss = system.compute_loss()
         loss.backward(retain_graph=True)
-        for t in range(0, max_steps):
-           system.spring_YP.grad[t] *= system.spring_YP[t].item()
-           system.spring_YN.grad[t] *= system.spring_YN[t].item()
-           #system.dashpot_damping.grad[t] *= system.dashpot_damping[t].item()
-           system.drag_damping.grad[t] *= system.drag_damping[t].item()
 
         # 记录数据
         losses.append(loss.item())
