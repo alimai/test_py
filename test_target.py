@@ -91,7 +91,7 @@ spring_YN_th = torch.tensor([spring_YN_base]*max_steps, requires_grad=True)
 dashpot_damping_th = torch.tensor([dashpot_damping_base]*max_steps, requires_grad=True)
 drag_damping_th = torch.tensor([drag_damping_base]*max_steps, requires_grad=True)
 params = [spring_YP_th, spring_YN_th, dashpot_damping_th]#, drag_damping_th]
-optimizer = torch.optim.SGD(params, lr=learning_rate)#.Adam
+optimizer = torch.optim.AdamW(params, lr=learning_rate, weight_decay=1e-4)#.Adam#.SGD#
 
 @ti.kernel
 def init_field_data()->int:

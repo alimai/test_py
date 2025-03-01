@@ -65,6 +65,29 @@ ti.root.lazy_grad()
 grad_max = ti.field(dtype=ti.f32, shape=())
 
 
+def output_spring_para():
+    s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy(), drag_damping.to_numpy()])
+    np.save('spring_para.npy', s_para)
+def load_spring_para():
+    #return False
+    global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
+    try:
+        s_para = np.load('spring_para.npy')
+    except FileNotFoundError:
+        return False
+    if(len(s_para) > 0):
+        spring_YP.from_numpy(s_para[0])
+        spring_YN.from_numpy(s_para[1])
+        dashpot_damping.from_numpy(s_para[2])
+        drag_damping.from_numpy(s_para[3])
+
+        spring_YP_th = torch.from_numpy(s_para[0])
+        spring_YN_th = torch.from_numpy(s_para[1])
+        dashpot_damping_th = torch.from_numpy(s_para[2])
+        drag_damping_th = torch.from_numpy(s_para[3])
+        return True
+    else:
+        return False
 @ti.kernel
 def initialize_spring_para2():
     for t in range(max_steps):
@@ -309,18 +332,16 @@ def run_windows(window, n, keep = False):
     if keep:
         input()
 
-if __name__ == '__main__':  # 主函数 
-
+if __name__ == '__main__':
     max_iter = 100# 最大迭代次数 
-
     window = None      
-    disp_by_step = False#True#
+    disp_by_step = True#False#
     if disp_by_step:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
 
     add_spring_offsets()
     initialize_spring_para2()        
-    #load_spring_para()
+    load_spring_para()
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
@@ -371,6 +392,7 @@ if __name__ == '__main__':  # 主函数
     axs[2].plot(spring_YPs_2)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
+    output_spring_para()
 
 
 # TODO: 应用各种优化算法，如deepmind的蒙特卡洛树搜索，deepseek的GRPO等

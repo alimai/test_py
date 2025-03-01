@@ -194,8 +194,8 @@ class MassSpringSystem:
         return loss
 
 def output_spring_para(system):
-    s_para = np.array([system.spring_YP.detach().numpy(), system.spring_YN.detach().numpy(), \
-                       system.dashpot_damping.detach().numpy(), system.drag_damping.detach().numpy()])
+    s_para = np.array([system.log_spring_YP.detach().numpy(), system.log_spring_YN.detach().numpy(), \
+                       system.log_dashpot_damping.detach().numpy(), system.log_drag_damping.detach().numpy()])
     np.save('spring_para_pt.npy', s_para)
 def load_spring_para(system):
     #return False
@@ -204,10 +204,10 @@ def load_spring_para(system):
     except FileNotFoundError:
         return False
     if(len(s_para) > 0):
-        system.spring_YP.data = torch.from_numpy(s_para[0])#.requires_grad_(True)
-        system.spring_YN.data = torch.from_numpy(s_para[1])#.requires_grad_(True)
-        system.dashpot_damping.data = torch.from_numpy(s_para[2])#.requires_grad_(True)
-        system.drag_damping.data = torch.from_numpy(s_para[3])#.requires_grad_(True)
+        system.log_spring_YP.data = torch.from_numpy(s_para[0])#.requires_grad_(True)
+        system.log_spring_YN.data = torch.from_numpy(s_para[1])#.requires_grad_(True)
+        system.log_dashpot_damping.data = torch.from_numpy(s_para[2])#.requires_grad_(True)
+        system.log_drag_damping.data = torch.from_numpy(s_para[3])#.requires_grad_(True)
         return True
     else:
         return False
@@ -260,14 +260,13 @@ def run_windows(window, n, system, keep = False):
         input()
 
 def main():   
-    max_iter = 100# 最大迭代次数 
+    max_iter = 100
     disp_by_step = False#True#
     window = None   
     if disp_by_step:
-        window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
+        window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)
 
     system = MassSpringSystem()
-    # 使用AdamW优化器
     optimizer = torch.optim.AdamW([#Adam([#SGD([#
         system.log_spring_YP,
         system.log_spring_YN,
@@ -277,7 +276,7 @@ def main():
 
     losses = []
     spring_YPs = []    
-    #load_spring_para(system)
+    load_spring_para(system)
     
     for iter in range(max_iter):
         optimizer.zero_grad()        
@@ -322,7 +321,7 @@ def main():
     axs[1].plot(spring_YPs)
     axs[2].plot(pos_final)
     plt.show()
-    #output_spring_para(system)
+    output_spring_para(system)
 
 if __name__ == '__main__':
     main()
