@@ -28,6 +28,30 @@ tooth_size = 0.01
 max_steps = 256
 batch_size = 5
 
+spring_YP_th = torch.tensor([np.log(np.float32(spring_YP_base))]*max_steps, requires_grad=True)
+spring_YN_th = torch.tensor([np.log(np.float32(spring_YN_base))]*max_steps, requires_grad=True)
+dashpot_damping_th = torch.tensor([np.log(np.float32(dashpot_damping_base))]*max_steps, requires_grad=True)
+drag_damping_th = torch.tensor([np.log(np.float32(drag_damping_base))]*max_steps, requires_grad=True)
+params = [spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th]
+optimizer_test = torch.optim.AdamW(params, lr=learning_rate, weight_decay=1e-4)#Adam#SGD#AdamW#
+def update_spring_para_th(system)->float:
+    optimizer_test.zero_grad()
+    with torch.no_grad():
+        spring_YP_th.grad = system.log_spring_YP.grad.clone()
+        spring_YN_th.grad = system.log_spring_YN.grad.clone()
+        #dashpot_damping_th.grad = system.log_dashpot_damping.grad.clone()
+        drag_damping_th.grad = system.log_drag_damping.grad.clone()
+
+    optimizer_test.step()
+
+    # 4. 更新原始参数
+    system.log_spring_YP.data = spring_YP_th.clone()
+    system.log_spring_YN.data = spring_YN_th.clone()
+    system.log_dashpot_damping.data = dashpot_damping_th.clone()
+    system.log_drag_damping.data = drag_damping_th.clone()
+    
+    return 0.0
+
 class MassSpringSystem:
     def __init__(self):
         # 创建对数空间的参数张量
@@ -260,7 +284,7 @@ def run_windows(window, n, system, keep = False):
         input()
 
 def main():   
-    max_iter = 100
+    max_iter = 200
     disp_by_step = False#True#
     window = None   
     if disp_by_step:
@@ -276,7 +300,7 @@ def main():
 
     losses = []
     spring_YPs = []    
-    load_spring_para(system)
+    #load_spring_para(system)
     
     for iter in range(max_iter):
         optimizer.zero_grad()        
@@ -308,7 +332,8 @@ def main():
             print(f'drag_damping={system.drag_damping[max_steps//2].item():.4e}')
 
         # 更新参数
-        optimizer.step()
+        #optimizer.step()
+        update_spring_para_th(system)
         
     pos_final = [] 
     for t in range(max_steps):
