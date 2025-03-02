@@ -92,10 +92,10 @@ def load_spring_para():
         log_dashpot_damping.from_numpy(s_para[2])
         log_drag_damping.from_numpy(s_para[3])
         
-        spring_YP_th = torch.from_numpy(s_para[0])
-        spring_YN_th = torch.from_numpy(s_para[1])
-        dashpot_damping_th = torch.from_numpy(s_para[2])
-        drag_damping_th = torch.from_numpy(s_para[3])
+        spring_YP_th.data = torch.from_numpy(s_para[0])
+        spring_YN_th.data = torch.from_numpy(s_para[1])
+        dashpot_damping_th.data = torch.from_numpy(s_para[2])
+        drag_damping_th.data = torch.from_numpy(s_para[3])
         return True
     else:
         return False

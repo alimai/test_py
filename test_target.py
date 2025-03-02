@@ -7,12 +7,14 @@ import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
 NORM_MODE = True#False#
+para_file = "spring_para_log2.npy"#
+
 TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-2 if NORM_MODE else 1e-2 # 学习率
+learning_rate = 1e-2 if NORM_MODE else 1e-1 # 学习率
 alpha = 1e-3  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -164,20 +166,18 @@ def add_field_offsets():
 
 
 
-def output_spring_para3(normalized_mode):
+def output_spring_para3():
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
-    if normalized_mode:
-        np.save('spring_para_log.npy', s_para)
-    else:
-        np.save('spring_para.npy', s_para)
+    np.save(para_file, s_para)
+    if NORM_MODE:
+        torch.save(optimizer.state_dict(), 'optimizer_state.pth', _use_new_zipfile_serialization=True)
 
-def load_spring_para3(normalized_mode):
+def load_spring_para3():
     global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
     try:
-        if normalized_mode:
-            s_para = np.load('spring_para_log.npy')
-        else:
-            s_para = np.load('spring_para.npy')
+        s_para = np.load(para_file)
+        if NORM_MODE and (len(s_para) > 0):
+            optimizer.load_state_dict(torch.load('optimizer_state.pth', weights_only=True))
     except FileNotFoundError:
         return False
     if(len(s_para) > 0):
@@ -186,10 +186,10 @@ def load_spring_para3(normalized_mode):
         log_dashpot_damping.from_numpy(s_para[2])
         log_drag_damping.from_numpy(s_para[3])
         
-        spring_YP_th = torch.from_numpy(s_para[0])
-        spring_YN_th = torch.from_numpy(s_para[1])
-        dashpot_damping_th = torch.from_numpy(s_para[2])
-        drag_damping_th = torch.from_numpy(s_para[3])
+        spring_YP_th.data = torch.from_numpy(s_para[0])
+        spring_YN_th.data = torch.from_numpy(s_para[1])
+        dashpot_damping_th.data = torch.from_numpy(s_para[2])
+        drag_damping_th.data = torch.from_numpy(s_para[3])
         return True
     else:
         return False
@@ -293,10 +293,10 @@ def update_spring_para(iter: ti.i32)->ti.f32:
         ti.sync()
         if (iter+1)%batch_size == 0:
             for t in range(max_steps):
-                spring_YP[t] += -learning_rate * spring_YP_grad[t]# / batch_size#spring_YP.grad[t]
-                spring_YN[t] += -learning_rate * spring_YN_grad[t]# / batch_size#spring_YN.grad[t]
-                dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t]# / batch_size#dashpot_damping.grad[t]
-                drag_damping[t] += -learning_rate * drag_damping_grad[t]# / batch_size#drag_damping.grad[t]
+                spring_YP[t] += -learning_rate * spring_YP_grad[t]
+                spring_YN[t] += -learning_rate * spring_YN_grad[t]
+                dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t]
+                drag_damping[t] += -learning_rate * drag_damping_grad[t]
     return grad_sum_total
 
 #非ti.kernel#函数
@@ -604,7 +604,7 @@ if __name__ == '__main__':  # 主函数
     add_field_offsets()
     add_spring_offsets()
     initialize_spring_para3()       
-    load_spring_para3(NORM_MODE) 
+    load_spring_para3() 
     trans_original_spring_para()
 
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
@@ -643,7 +643,7 @@ if __name__ == '__main__':  # 主函数
         spring_YPs.append(spring_YP[max_steps//2])         
         
         if iter % inter_iter == 0:
-            print('\nX=', iter, ', Y=', loss[None], ", Z=", grad_sum_total)
+            print('\nX=', iter, ', Y=', loss[None], ", Z=", spring_YP[max_steps//3], grad_sum_total)
         # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
         # print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
@@ -672,7 +672,7 @@ if __name__ == '__main__':  # 主函数
     plt.show()  # 显示图像
     if not NORM_MODE:
         trans_log_spring_para()
-    output_spring_para3(NORM_MODE)
+    output_spring_para3()
 
 
 # YODO：可将每层每个牙齿的弹簧参数用自动微分优化
