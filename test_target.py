@@ -168,21 +168,9 @@ def output_spring_para():
     np.save('spring_para.npy', s_para)
 def output_spring_para3():
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
-    np.save('spring_para.npy', s_para)
-def load_spring_para():
-    try:
-        s_para = np.load('spring_para.npy')
-    except FileNotFoundError:
-        return False
-    if(len(s_para) > 0):
-        spring_YP.from_numpy(s_para[0])
-        spring_YN.from_numpy(s_para[1])
-        dashpot_damping.from_numpy(s_para[2])
-        drag_damping.from_numpy(s_para[3])
-        return True
-    else:
-        return False
-def load_spring_para3():
+    np.save('spring_para_log.npy', s_para)
+def load_spring_para():    
+    global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
     try:
         s_para = np.load('spring_para.npy')
     except FileNotFoundError:
@@ -192,6 +180,31 @@ def load_spring_para3():
         log_spring_YN.from_numpy(s_para[1])
         log_dashpot_damping.from_numpy(s_para[2])
         log_drag_damping.from_numpy(s_para[3])
+        
+        spring_YP_th = torch.from_numpy(s_para[0])
+        spring_YN_th = torch.from_numpy(s_para[1])
+        dashpot_damping_th = torch.from_numpy(s_para[2])
+        drag_damping_th = torch.from_numpy(s_para[3])
+
+        return True
+    else:
+        return False
+def load_spring_para3():
+    global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
+    try:
+        s_para = np.load('spring_para_log.npy')
+    except FileNotFoundError:
+        return False
+    if(len(s_para) > 0):
+        log_spring_YP.from_numpy(s_para[0])
+        log_spring_YN.from_numpy(s_para[1])
+        log_dashpot_damping.from_numpy(s_para[2])
+        log_drag_damping.from_numpy(s_para[3])
+        
+        spring_YP_th = torch.from_numpy(s_para[0])
+        spring_YN_th = torch.from_numpy(s_para[1])
+        dashpot_damping_th = torch.from_numpy(s_para[2])
+        drag_damping_th = torch.from_numpy(s_para[3])
         return True
     else:
         return False
@@ -317,10 +330,10 @@ def update_spring_para_th3()->float:
     optimizer.zero_grad()
     grad_sum = np.array([0.0, 0.0,0.0,0.0])
     for t in range(max_steps):
-        log_spring_YP.grad[t] *= log_spring_YP[t]
-        log_spring_YN.grad[t] *= log_spring_YN[t]
-        log_dashpot_damping.grad[t] *= log_dashpot_damping[t]
-        log_drag_damping.grad[t] *= log_drag_damping[t]        
+        # log_spring_YP.grad[t] *= log_spring_YP[t]
+        # log_spring_YN.grad[t] *= log_spring_YN[t]
+        # log_dashpot_damping.grad[t] *= log_dashpot_damping[t]
+        # log_drag_damping.grad[t] *= log_drag_damping[t]        
 
         grad_sum[0] += abs(log_spring_YP.grad[t])
         grad_sum[1] += abs(log_spring_YN.grad[t])
@@ -586,9 +599,9 @@ def run_windows(window, n, keep = False):
         input()
 
 if __name__ == '__main__':  # 主函数 
-    max_iter = 1000# 最大迭代次数 
+    max_iter = 2000# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
-    normalized_mode = True
+    normalized_mode = True#False#
 
     window = None      
     disp_by_step = False#True#
@@ -598,8 +611,11 @@ if __name__ == '__main__':  # 主函数
 
     add_field_offsets()
     add_spring_offsets()
-    initialize_spring_para3()        
-    #load_spring_para3()   
+    initialize_spring_para3()    
+    if normalized_mode:    
+        load_spring_para3() 
+    else:
+        load_spring_para()  
     update_original_spring_para()#just for following print
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
@@ -619,7 +635,7 @@ if __name__ == '__main__':  # 主函数
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
-                    if iter % (max_iter//10) == 0: #display 
+                    if iter % (inter_iter) == 0: #display 
                         if n % 10 == 1:#if n % (max_steps-1) == 0: 
                             run_windows(window, n)
             compute_loss()
@@ -664,7 +680,10 @@ if __name__ == '__main__':  # 主函数
     axs[2].plot(spring_YPs_2)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
-    #output_spring_para2()
+    if normalized_mode:
+        output_spring_para3()
+    else:
+        output_spring_para()
 
 
 # YODO：可将每层每个牙齿的弹簧参数用自动微分优化
