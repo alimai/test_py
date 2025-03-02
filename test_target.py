@@ -6,12 +6,13 @@ import torch
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
+NORM_MODE = True#False#
 TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-2  # 学习率
+learning_rate = 1e-2 if NORM_MODE else 1e-2 # 学习率
 alpha = 1e-3  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -590,10 +591,9 @@ def run_windows(window, n, keep = False):
         input()
 
 if __name__ == '__main__':  # 主函数 
-    max_iter = 2000# 最大迭代次数 
+    max_iter = 500# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
-    normalized_mode = False#True#
-    print("normalized_mode: ", normalized_mode)
+    print("normalized_mode: ", NORM_MODE)
 
     window = None      
     disp_by_step = False#True#
@@ -604,7 +604,7 @@ if __name__ == '__main__':  # 主函数
     add_field_offsets()
     add_spring_offsets()
     initialize_spring_para3()       
-    load_spring_para3(normalized_mode) 
+    load_spring_para3(NORM_MODE) 
     trans_original_spring_para()
 
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
@@ -620,7 +620,7 @@ if __name__ == '__main__':  # 主函数
         loss[None] = 0.0
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
-            if normalized_mode:
+            if NORM_MODE:
                 trans_original_spring_para()
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
@@ -632,7 +632,7 @@ if __name__ == '__main__':  # 主函数
   
         
         learning_rate *= (1.0 - alpha)
-        if normalized_mode:
+        if NORM_MODE:
             grad_sum_total = update_spring_para_th3()
         else:
             grad_sum_total = update_spring_para(iter)#
@@ -670,9 +670,9 @@ if __name__ == '__main__':  # 主函数
     axs[2].plot(spring_YPs_2)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
-    if not normalized_mode:
+    if not NORM_MODE:
         trans_log_spring_para()
-    output_spring_para3(normalized_mode)
+    output_spring_para3(NORM_MODE)
 
 
 # YODO：可将每层每个牙齿的弹簧参数用自动微分优化
