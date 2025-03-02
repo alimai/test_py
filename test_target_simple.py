@@ -80,7 +80,8 @@ optimizer = torch.optim.AdamW(params, lr=learning_rate, weight_decay=1e-4)#Adam#
 def output_spring_para():
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
     np.save('spring_para.npy', s_para)
-def load_spring_para():
+def load_spring_para():    
+    global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
     try:
         s_para = np.load('spring_para.npy')
     except FileNotFoundError:
@@ -90,6 +91,11 @@ def load_spring_para():
         log_spring_YN.from_numpy(s_para[1])
         log_dashpot_damping.from_numpy(s_para[2])
         log_drag_damping.from_numpy(s_para[3])
+        
+        spring_YP_th = torch.from_numpy(s_para[0])
+        spring_YN_th = torch.from_numpy(s_para[1])
+        dashpot_damping_th = torch.from_numpy(s_para[2])
+        drag_damping_th = torch.from_numpy(s_para[3])
         return True
     else:
         return False

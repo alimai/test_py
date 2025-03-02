@@ -11,7 +11,7 @@ ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-1  # 学习率
+learning_rate = 1e-2  # 学习率
 alpha = 1e-3  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -254,7 +254,6 @@ def re_update_grad(iter: ti.i32)->ti.f32:
     #   #grad_sum_total += grad_sum[i]
     #print("sug_grad_total: ", sug_grad_total)
 
-    #if not np.isnan(grad_sum_total):---不能判断nan值
     if not ti.math.isnan(grad_sum_total):
         grad_max_cur = 0.0
         for t in range(max_steps):
@@ -315,6 +314,7 @@ def update_spring_para_th()->float:
 
 #非ti.kernel#函数
 def update_spring_para_th3()->float:
+    optimizer.zero_grad()
     grad_sum = np.array([0.0, 0.0,0.0,0.0])
     for t in range(max_steps):
         log_spring_YP.grad[t] *= log_spring_YP[t]
@@ -328,9 +328,7 @@ def update_spring_para_th3()->float:
         grad_sum[3] += abs(log_drag_damping.grad[t])
 
     grad_sum_total = float(grad_sum.sum())
-    #if np.isnan(grad_sum_total):
     if np.isfinite(grad_sum_total):
-        optimizer.zero_grad()
         spring_YP_th.grad = log_spring_YP.grad.to_torch()
         spring_YN_th.grad = log_spring_YN.grad.to_torch()
         dashpot_damping_th.grad = log_dashpot_damping.grad.to_torch()
@@ -588,8 +586,9 @@ def run_windows(window, n, keep = False):
         input()
 
 if __name__ == '__main__':  # 主函数 
-    max_iter = 500# 最大迭代次数 
+    max_iter = 1000# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
+    normalized_mode = True
 
     window = None      
     disp_by_step = False#True#
@@ -615,7 +614,8 @@ if __name__ == '__main__':  # 主函数
         loss[None] = 0.0
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
-            #update_original_spring_para()
+            if normalized_mode:
+                update_original_spring_para()
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
@@ -626,7 +626,10 @@ if __name__ == '__main__':  # 主函数
   
         
         learning_rate *= (1.0 - alpha)
-        grad_sum_total = update_spring_para(iter)#update_spring_para_th3()#
+        if normalized_mode:
+            grad_sum_total = update_spring_para_th3()
+        else:
+            grad_sum_total = update_spring_para(iter)#
         if not np.isfinite(grad_sum_total):
             print(loss[None], grad_sum_total)
             continue#break#       
