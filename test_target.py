@@ -269,7 +269,7 @@ def re_update_grad(iter: ti.i32)->ti.f32:
     return grad_sum_total
 
 @ti.kernel
-def update_spring_para2(iter: ti.i32)->ti.f32:
+def update_spring_para(iter: ti.i32)->ti.f32:
     grad_sum_total = re_update_grad(iter)
     if not ti.math.isnan(grad_sum_total):
         if iter%batch_size == 0:
@@ -597,7 +597,7 @@ if __name__ == '__main__':  # 主函数
         loss[None] = 0.0
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
-            #update_original_spring_para()
+            update_original_spring_para()
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
@@ -608,7 +608,7 @@ if __name__ == '__main__':  # 主函数
   
         
         learning_rate *= (1.0 - alpha)
-        grad_sum_total = update_spring_para2(iter)#update_spring_para_th3()#
+        grad_sum_total = update_spring_para_th3()#update_spring_para(iter)#
         if np.isnan(grad_sum_total):
             print(loss[None], grad_sum_total)
             continue#break#       
