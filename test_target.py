@@ -592,7 +592,7 @@ def run_windows(window, n, keep = False):
 if __name__ == '__main__':  # 主函数 
     max_iter = 2000# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
-    normalized_mode = True#False#
+    normalized_mode = False#True#
     print("normalized_mode: ", normalized_mode)
 
     window = None      
@@ -670,7 +670,7 @@ if __name__ == '__main__':  # 主函数
     axs[2].plot(spring_YPs_2)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
-    if normalized_mode:
+    if not normalized_mode:
         trans_log_spring_para()
     output_spring_para3(normalized_mode)
 
