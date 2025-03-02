@@ -163,36 +163,20 @@ def add_field_offsets():
 
 
 
-def output_spring_para():
-    s_para = np.array([spring_YP.to_numpy(), spring_YN.to_numpy(), dashpot_damping.to_numpy(), drag_damping.to_numpy()])
-    np.save('spring_para.npy', s_para)
-def output_spring_para3():
+def output_spring_para3(normalized_mode):
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
-    np.save('spring_para_log.npy', s_para)
-def load_spring_para():    
-    global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
-    try:
-        s_para = np.load('spring_para.npy')
-    except FileNotFoundError:
-        return False
-    if(len(s_para) > 0):
-        log_spring_YP.from_numpy(s_para[0])
-        log_spring_YN.from_numpy(s_para[1])
-        log_dashpot_damping.from_numpy(s_para[2])
-        log_drag_damping.from_numpy(s_para[3])
-        
-        spring_YP_th = torch.from_numpy(s_para[0])
-        spring_YN_th = torch.from_numpy(s_para[1])
-        dashpot_damping_th = torch.from_numpy(s_para[2])
-        drag_damping_th = torch.from_numpy(s_para[3])
-
-        return True
+    if normalized_mode:
+        np.save('spring_para_log.npy', s_para)
     else:
-        return False
-def load_spring_para3():
+        np.save('spring_para.npy', s_para)
+
+def load_spring_para3(normalized_mode):
     global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
     try:
-        s_para = np.load('spring_para_log.npy')
+        if normalized_mode:
+            s_para = np.load('spring_para_log.npy')
+        else:
+            s_para = np.load('spring_para.npy')
     except FileNotFoundError:
         return False
     if(len(s_para) > 0):
@@ -210,12 +194,19 @@ def load_spring_para3():
         return False
 
 @ti.kernel
-def update_original_spring_para():
+def trans_original_spring_para():
     for t in range(max_steps):
         spring_YP[t]= ti.math.exp(log_spring_YP[t])  
         spring_YN[t] = ti.math.exp(log_spring_YN[t])  
         dashpot_damping[t] = ti.math.exp(log_dashpot_damping[t]) 
         drag_damping[t] = ti.math.exp(log_drag_damping[t])
+@ti.kernel
+def trans_log_spring_para():
+    for t in range(max_steps):
+        log_spring_YP[t]= ti.math.log(spring_YP[t])  
+        log_spring_YN[t] = ti.math.log(spring_YN[t])  
+        log_dashpot_damping[t] = ti.math.log(dashpot_damping[t]) 
+        log_drag_damping[t] = ti.math.log(drag_damping[t])
 
 @ti.kernel
 def initialize_spring_para():
@@ -602,6 +593,7 @@ if __name__ == '__main__':  # 主函数
     max_iter = 2000# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
     normalized_mode = True#False#
+    print("normalized_mode: ", normalized_mode)
 
     window = None      
     disp_by_step = False#True#
@@ -611,12 +603,10 @@ if __name__ == '__main__':  # 主函数
 
     add_field_offsets()
     add_spring_offsets()
-    initialize_spring_para3()    
-    if normalized_mode:    
-        load_spring_para3() 
-    else:
-        load_spring_para()  
-    update_original_spring_para()#just for following print
+    initialize_spring_para3()       
+    load_spring_para3(normalized_mode) 
+    trans_original_spring_para()
+
     print(spring_YP[0], spring_YN[0], dashpot_damping[0], drag_damping[0])
     print(spring_YP[1], spring_YN[1], dashpot_damping[1], drag_damping[1])
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
@@ -631,7 +621,7 @@ if __name__ == '__main__':  # 主函数
         initialize_mass_points(0)
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
             if normalized_mode:
-                update_original_spring_para()
+                trans_original_spring_para()
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
@@ -681,9 +671,8 @@ if __name__ == '__main__':  # 主函数
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
     if normalized_mode:
-        output_spring_para3()
-    else:
-        output_spring_para()
+        trans_log_spring_para()
+    output_spring_para3(normalized_mode)
 
 
 # YODO：可将每层每个牙齿的弹簧参数用自动微分优化
