@@ -6,15 +6,16 @@ import torch
 import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
-NORM_MODE = True#False#
-para_file = "spring_para_log2.npy"#
+PTH_MODE = True#False#
+para_file = "spring_para_log.npy"#
+optim_file = 'optimizer_state.pth'
 
 TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
 
 #<<<<<初始量>>>>>
 dt = 1e-4  # 时间步长
-learning_rate = 1e-2 if NORM_MODE else 1e-1 # 学习率
+learning_rate = 1e-2 if PTH_MODE else 1e-1 # 学习率
 alpha = 1e-3  # 学习率衰减
 
 spring_YP_base = 1e6  #1.2e6 # 引力系数--长度相关
@@ -78,7 +79,7 @@ f = vec()
 l = scalar() #location in field
 lay2.place(x, v, f, l)
 
-batch_size = 5
+batch_size = 1
 spring_YP_grad = ti.field(dtype=ti.f32, shape=(max_steps))
 spring_YN_grad = ti.field(dtype=ti.f32, shape=(max_steps))
 dashpot_damping_grad = ti.field(dtype=ti.f32, shape=(max_steps))
@@ -169,17 +170,16 @@ def add_field_offsets():
 def output_spring_para3():
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
     np.save(para_file, s_para)
-    if NORM_MODE:
-        torch.save(optimizer.state_dict(), 'optimizer_state.pth', _use_new_zipfile_serialization=True)
+    if PTH_MODE:
+        torch.save(optimizer.state_dict(), optim_file, _use_new_zipfile_serialization=True)
 
 def load_spring_para3():
     global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
     try:
         s_para = np.load(para_file)
-        if NORM_MODE and (len(s_para) > 0):
-            optimizer.load_state_dict(torch.load('optimizer_state.pth', weights_only=True))
     except FileNotFoundError:
-        return False
+        s_para = []
+        print('no para file!')
     if(len(s_para) > 0):
         log_spring_YP.from_numpy(s_para[0])
         log_spring_YN.from_numpy(s_para[1])
@@ -190,9 +190,12 @@ def load_spring_para3():
         spring_YN_th.data = torch.from_numpy(s_para[1])
         dashpot_damping_th.data = torch.from_numpy(s_para[2])
         drag_damping_th.data = torch.from_numpy(s_para[3])
-        return True
-    else:
-        return False
+    try:
+        if PTH_MODE:
+            optimizer.load_state_dict(torch.load(optim_file, weights_only=True))
+    except FileNotFoundError:
+        print('no optim file!')
+    return True
 
 @ti.kernel
 def trans_original_spring_para():
@@ -226,27 +229,12 @@ def initialize_spring_para3():
         log_spring_YN[t] = ti.math.log(spring_YN_base)  
         log_dashpot_damping[t] = ti.math.log(dashpot_damping_base) 
         log_drag_damping[t] = ti.math.log(drag_damping_base)
-@ti.func
-def re_update_grad_core(grad_max_cur: ti.f32):
-    grad_max_used = grad_max_cur
-    if(grad_max_used < grad_max[None]):
-        grad_max_used = grad_max[None]
 
-    for t in range(max_steps):
-        #if t>=max_steps-2:
-        spring_YP.grad[t] *= spring_YP[t] / grad_max_used
-        spring_YN.grad[t] *= spring_YN[t]  / grad_max_used
-        dashpot_damping.grad[t] *= dashpot_damping[t]  / grad_max_used
-        drag_damping.grad[t] *= drag_damping[t]  / grad_max_used
-@ti.func
-def re_update_grad(iter: ti.i32)->ti.f32:
+
+@ti.kernel
+def is_valid_grad()->bool:
     grad_sum = ti.Vector([0.0, 0.0,0.0,0.0])
     for t in range(max_steps):
-        spring_YP.grad[t] *= spring_YP[t]
-        spring_YN.grad[t] *= spring_YN[t]
-        dashpot_damping.grad[t] *= dashpot_damping[t]
-        drag_damping.grad[t] *= drag_damping[t]        
-
         grad_sum[0] += abs(spring_YP.grad[t])
         grad_sum[1] += abs(spring_YN.grad[t])
         grad_sum[2] += abs(dashpot_damping.grad[t])
@@ -256,51 +244,61 @@ def re_update_grad(iter: ti.i32)->ti.f32:
     grad_sum_total = grad_sum.sum()
     #for i in range(grad_sum.n):
     #   print(elem)
-    #   #grad_sum_total += grad_sum[i]
-    #print("sug_grad_total: ", sug_grad_total)
+    #print("grad_sum_total: ", grad_sum, grad_sum_total)
+    return not ti.math.isnan(grad_sum_total)#np.isfinite(grad_sum_total)#
 
-    if not ti.math.isnan(grad_sum_total):
-        grad_max_cur = 0.0
-        for t in range(max_steps):
-            ti.atomic_max(grad_max_cur,abs(spring_YP.grad[t]))
-            ti.atomic_max(grad_max_cur,abs(spring_YN.grad[t]))
-            ti.atomic_max(grad_max_cur,abs(dashpot_damping.grad[t]))
-            ti.atomic_max(grad_max_cur,abs(drag_damping.grad[t]))
+@ti.func
+def re_update_grad(iter: ti.i32):
+    grad_max_cur = 0.0
+    for t in range(max_steps):
+        spring_YP.grad[t] *= spring_YP[t]
+        spring_YN.grad[t] *= spring_YN[t]
+        dashpot_damping.grad[t] *= dashpot_damping[t]
+        drag_damping.grad[t] *= drag_damping[t]        
 
-        ti.sync()
-        if iter <= 100:
-            grad_max[None] = max(grad_max[None], grad_max_cur)
-        re_update_grad_core(grad_max_cur)
+        ti.atomic_max(grad_max_cur,abs(spring_YP.grad[t]))
+        ti.atomic_max(grad_max_cur,abs(spring_YN.grad[t]))
+        ti.atomic_max(grad_max_cur,abs(dashpot_damping.grad[t]))
+        ti.atomic_max(grad_max_cur,abs(drag_damping.grad[t]))
 
-    return grad_sum_total
+    ti.sync()
+    if iter <= 100:
+        grad_max[None] = max(grad_max[None], grad_max_cur)    
+    if(grad_max_cur < grad_max[None]):
+        grad_max_cur = grad_max[None]
+
+    for t in range(max_steps):
+        #if t>=max_steps-2:
+        spring_YP.grad[t] *= spring_YP[t] / grad_max_cur
+        spring_YN.grad[t] *= spring_YN[t]  / grad_max_cur
+        dashpot_damping.grad[t] *= dashpot_damping[t]  / grad_max_cur
+        drag_damping.grad[t] *= drag_damping[t]  / grad_max_cur
 
 @ti.kernel
-def update_spring_para(iter: ti.i32)->ti.f32:
-    grad_sum_total = re_update_grad(iter)
-    if not ti.math.isnan(grad_sum_total):
-        if iter%batch_size == 0:
-            for t in range(max_steps):
-                spring_YP_grad[t] = 0.0
-                spring_YN_grad[t] = 0.0
-                dashpot_damping_grad[t] = 0.0
-                drag_damping_grad[t] = 0.0
-        ti.sync()
+def update_spring_para(iter: ti.i32):
+    re_update_grad(iter)
+    if iter%batch_size == 0:
         for t in range(max_steps):
-            spring_YP_grad[t] += (spring_YP.grad[t])
-            spring_YN_grad[t] += (spring_YN.grad[t])
-            dashpot_damping_grad[t] += (dashpot_damping.grad[t])
-            drag_damping_grad[t] += (drag_damping.grad[t])
-        ti.sync()
-        if (iter+1)%batch_size == 0:
-            for t in range(max_steps):
-                spring_YP[t] += -learning_rate * spring_YP_grad[t]
-                spring_YN[t] += -learning_rate * spring_YN_grad[t]
-                dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t]
-                drag_damping[t] += -learning_rate * drag_damping_grad[t]
-    return grad_sum_total
+            spring_YP_grad[t] = 0.0
+            spring_YN_grad[t] = 0.0
+            dashpot_damping_grad[t] = 0.0
+            drag_damping_grad[t] = 0.0
+    ti.sync()
+    for t in range(max_steps):
+        spring_YP_grad[t] += (spring_YP.grad[t])
+        spring_YN_grad[t] += (spring_YN.grad[t])
+        dashpot_damping_grad[t] += (dashpot_damping.grad[t])
+        drag_damping_grad[t] += (drag_damping.grad[t])
+    ti.sync()
+    if (iter+1)%batch_size == 0:
+        for t in range(max_steps):
+            spring_YP[t] += -learning_rate * spring_YP_grad[t]
+            spring_YN[t] += -learning_rate * spring_YN_grad[t]
+            dashpot_damping[t] += -learning_rate * dashpot_damping_grad[t]
+            drag_damping[t] += -learning_rate * drag_damping_grad[t]
 
 #非ti.kernel#函数
-def update_spring_para_th()->float:
+def update_spring_para_th():
     optimizer.zero_grad()
     spring_YP_th.grad = spring_YP.grad.to_torch()
     spring_YN_th.grad = spring_YN.grad.to_torch()
@@ -315,39 +313,24 @@ def update_spring_para_th()->float:
     spring_YN.from_torch(spring_YN_th)
     dashpot_damping.from_torch(dashpot_damping_th)
     drag_damping.from_torch(drag_damping_th)
-    return 0.0
 
 #非ti.kernel#函数
-def update_spring_para_th3()->float:
+def update_spring_para_th3():
     optimizer.zero_grad()
-    grad_sum = np.array([0.0, 0.0,0.0,0.0])
-    for t in range(max_steps):
-        # log_spring_YP.grad[t] *= log_spring_YP[t]
-        # log_spring_YN.grad[t] *= log_spring_YN[t]
-        # log_dashpot_damping.grad[t] *= log_dashpot_damping[t]
-        # log_drag_damping.grad[t] *= log_drag_damping[t]        
+    spring_YP_th.grad = log_spring_YP.grad.to_torch()
+    spring_YN_th.grad = log_spring_YN.grad.to_torch()
+    dashpot_damping_th.grad = log_dashpot_damping.grad.to_torch()
+    drag_damping_th.grad = log_drag_damping.grad.to_torch()
 
-        grad_sum[0] += abs(log_spring_YP.grad[t])
-        grad_sum[1] += abs(log_spring_YN.grad[t])
-        grad_sum[2] += abs(log_dashpot_damping.grad[t])
-        grad_sum[3] += abs(log_drag_damping.grad[t])
+    #更新参数
+    optimizer.step()
 
-    grad_sum_total = float(grad_sum.sum())
-    if np.isfinite(grad_sum_total):
-        spring_YP_th.grad = log_spring_YP.grad.to_torch()
-        spring_YN_th.grad = log_spring_YN.grad.to_torch()
-        dashpot_damping_th.grad = log_dashpot_damping.grad.to_torch()
-        drag_damping_th.grad = log_drag_damping.grad.to_torch()
-
-        #更新参数
-        optimizer.step()
-
+    if PTH_MODE:
         #print(spring_YP_th)
         log_spring_YP.from_torch(spring_YP_th)
         log_spring_YN.from_torch(spring_YN_th)
         log_dashpot_damping.from_torch(dashpot_damping_th)
         log_drag_damping.from_torch(drag_damping_th)
-    return grad_sum_total
 
 @ti.kernel
 def initialize_mass_points(t: ti.i32):
@@ -550,7 +533,7 @@ def compute_loss():
     calcute_loss_v(j) 
  
 point = ti.Vector.field(3, dtype=float, shape=1) # for display 
-def run_windows(window, n, keep = False):
+def run_windows(window, n, iter = 0, keep = False):
     if window is None:
         window = ti.ui.Window("Teeth target Simulation", (1024, 1024), vsync=True)  # 创建窗口
     canvas = window.get_canvas()
@@ -564,7 +547,7 @@ def run_windows(window, n, keep = False):
         camera.position(2.0 * np.sin((n-max_steps*0.5) / max_steps *np.pi*4),
                         2.0 * np.cos((n-max_steps*0.5) / max_steps *np.pi*4),
                         0.0)  # 设置相机位置
-    camera.position(0.0, 2.0, 0.0)  # 设置相机位置
+    camera.position(0.0, 2.0, 0.0)  # 设置相机位置---test
     camera.lookat(0.0, 0.0, 0.0)  # 设置相机观察点
     camera.up(0, 0, 1)
     scene.set_camera(camera)
@@ -586,6 +569,8 @@ def run_windows(window, n, keep = False):
     #scene.mesh(vertices, indices=indices, per_vertex_color=colors, two_sided=True)  # 绘制网格
 
     canvas.scene(scene)
+    title = 'target/'+str(iter)+'_'+str(n)+'.jpg'
+    window.save_image(title)
     window.show()
     if keep:
         input()
@@ -593,7 +578,7 @@ def run_windows(window, n, keep = False):
 if __name__ == '__main__':  # 主函数 
     max_iter = 500# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
-    print("normalized_mode: ", NORM_MODE)
+    print("normalized_mode: ", PTH_MODE)
 
     window = None      
     disp_by_step = False#True#
@@ -619,32 +604,32 @@ if __name__ == '__main__':  # 主函数
         #print('\nIter=', iter)
         loss[None] = 0.0
         initialize_mass_points(0)
+        if PTH_MODE:
+            trans_original_spring_para()#需放在微分范围外，否则只有log参数有梯度，影响is_valid_grad()
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
-            if NORM_MODE:
-                trans_original_spring_para()
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
                     if iter % (inter_iter) == 0: #display 
                         if n % 10 == 1:#if n % (max_steps-1) == 0: 
-                            run_windows(window, n)
+                            run_windows(window, n, iter)
             compute_loss()
   
         
         learning_rate *= (1.0 - alpha)
-        if NORM_MODE:
-            grad_sum_total = update_spring_para_th3()
+        if is_valid_grad():
+            update_spring_para_th3()
+            if not PTH_MODE:
+                update_spring_para(iter)
         else:
-            grad_sum_total = update_spring_para(iter)#
-        if not np.isfinite(grad_sum_total):
-            print(loss[None], grad_sum_total)
+            print(iter, loss[None])
             continue#break#       
         losses.append(loss[None])  # 添加损失到列表
         spring_YPs.append(spring_YP[max_steps//2])         
         
         if iter % inter_iter == 0:
-            print('\nX=', iter, ', Y=', loss[None], ", Z=", spring_YP[max_steps//3], grad_sum_total)
-        # print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
+            print('\nX=', iter, ', Y=', loss[None], ", Z=", spring_YP[max_steps//3])
+        #print(spring_YP.grad[0], spring_YN.grad[0], dashpot_damping.grad[0], drag_damping.grad[0])
         # print(spring_YP.grad[1], spring_YN.grad[1], dashpot_damping.grad[1], drag_damping.grad[1])
         # print(spring_YP.grad[max_steps//2], spring_YN.grad[max_steps//2], dashpot_damping.grad[max_steps//2])#, drag_damping.grad[max_steps//2])
         # print(spring_YP.grad[0], spring_YP.grad[1], spring_YP.grad[max_steps-2], spring_YP.grad[max_steps-1])
@@ -660,7 +645,7 @@ if __name__ == '__main__':  # 主函数
     print(spring_YP[max_steps//2], spring_YN[max_steps//2], dashpot_damping[max_steps//2], drag_damping[max_steps//2])
     print(spring_YP[max_steps-1], spring_YN[max_steps-1], dashpot_damping[max_steps-1], drag_damping[max_steps-1])
     
-    #run_windows(window, max_steps-1, keep = True)
+    #run_windows(window, max_steps-1, iter=max_iter-1, keep = True)
     spring_YPs_2=[]
     for t in range(max_steps-1):        
         spring_YPs_2.append(spring_YP[t])
@@ -670,7 +655,7 @@ if __name__ == '__main__':  # 主函数
     axs[2].plot(spring_YPs_2)  # 绘制损失曲线
     plt.tight_layout()  # 紧凑布局
     plt.show()  # 显示图像
-    if not NORM_MODE:
+    if not PTH_MODE:
         trans_log_spring_para()
     output_spring_para3()
 
