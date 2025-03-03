@@ -7,8 +7,8 @@ import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
 PTH_MODE = True#False#
-para_file = "spring_para_log.npy"#
-optim_file = 'optimizer_state.pth'
+para_file = "spring_para_log2.npy"#
+optim_file = 'optimizer_state2.pth'
 
 TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
@@ -234,11 +234,18 @@ def initialize_spring_para3():
 @ti.kernel
 def is_valid_grad()->bool:
     grad_sum = ti.Vector([0.0, 0.0,0.0,0.0])
-    for t in range(max_steps):
-        grad_sum[0] += abs(spring_YP.grad[t])
-        grad_sum[1] += abs(spring_YN.grad[t])
-        grad_sum[2] += abs(dashpot_damping.grad[t])
-        grad_sum[3] += abs(drag_damping.grad[t])
+    if PTH_MODE:
+        for t in range(max_steps):
+            grad_sum[0] += abs(log_spring_YP.grad[t])
+            grad_sum[1] += abs(log_spring_YN.grad[t])
+            grad_sum[2] += abs(log_dashpot_damping.grad[t])
+            grad_sum[3] += abs(log_drag_damping.grad[t])
+    else:
+        for t in range(max_steps):
+            grad_sum[0] += abs(spring_YP.grad[t])
+            grad_sum[1] += abs(spring_YN.grad[t])
+            grad_sum[2] += abs(dashpot_damping.grad[t])
+            grad_sum[3] += abs(drag_damping.grad[t])
 
     ti.sync()
     grad_sum_total = grad_sum.sum()
@@ -604,9 +611,9 @@ if __name__ == '__main__':  # 主函数
         #print('\nIter=', iter)
         loss[None] = 0.0
         initialize_mass_points(0)
-        if PTH_MODE:
-            trans_original_spring_para()#需放在微分范围外，否则只有log参数有梯度，影响is_valid_grad()
         with ti.ad.Tape(loss=loss, validation=TEST_MODE): # 使用自动微分
+            if PTH_MODE:
+                trans_original_spring_para()#此函数生效则只有log参数有梯度
             for n in range(1, max_steps):            
                 substep(n)  # 执行子步
                 if not TEST_MODE and disp_by_step:
