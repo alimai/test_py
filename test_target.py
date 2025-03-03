@@ -7,8 +7,8 @@ import taichi as ti
 import matplotlib.pyplot as plt  # 导入matplotlib.pyplot库
 
 PTH_MODE = True#False#
-para_file = "spring_para_log2.npy"#
-optim_file = 'optimizer_state2.pth'
+para_file = "spring_para_log1.npy"#
+optim_file = 'optimizer_state1.pth'
 
 TEST_MODE = False#True#
 ti.init(arch=ti.cpu, debug=TEST_MODE)#  # 初始化Taichi，使用CPU架构
@@ -170,8 +170,7 @@ def add_field_offsets():
 def output_spring_para3():
     s_para = np.array([log_spring_YP.to_numpy(), log_spring_YN.to_numpy(), log_dashpot_damping.to_numpy(), log_drag_damping.to_numpy()])
     np.save(para_file, s_para)
-    if PTH_MODE:
-        torch.save(optimizer.state_dict(), optim_file, _use_new_zipfile_serialization=True)
+    torch.save(optimizer.state_dict(), optim_file, _use_new_zipfile_serialization=True)
 
 def load_spring_para3():
     global spring_YP_th, spring_YN_th, dashpot_damping_th, drag_damping_th
@@ -583,7 +582,7 @@ def run_windows(window, n, iter = 0, keep = False):
         input()
 
 if __name__ == '__main__':  # 主函数 
-    max_iter = 500# 最大迭代次数 
+    max_iter = 300# 最大迭代次数 
     inter_iter = max_iter//100 if max_iter >= 100 else 1 
     print("normalized_mode: ", PTH_MODE)
 
