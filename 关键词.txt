@@ -1,0 +1,70 @@
+﻿
+一、Andrews指标：
+FACC (Facial Axis 0f the Clinical Crown)临床冠长轴(位于唇侧牙面,不同于牙轴)
+FA点 (Facial Axis Point)冠轴点,临床冠中心
+(临床冠长轴中心点,临床冠长轴与Andrews平面的交点,唇侧牙面外形高点,)
+(临床这里意味着位于牙齿外露表面,可以直接看到)
+
+另有Functional Axis point:(牙冠面咬合主要接触点,与牙弓曲线有关)
+FAAC (Facial Axis 0f the Arch Curve)牙弓面轴(牙列,矢向)
+牙弓中线(Dental midline)指的是上下牙弓的理想中心线,竖向
+
+
+二.基本指标:
+咬合关系,覆合覆盖,拥挤度,bolton比
+
+二、操作流程
+stl-(atp)-ddm-(atd)-ods-(atm)-stl
+
+三、Atreat平台
+PopBaseCore: 
+	MeshBase: 
+		face: FaceContainer,std::vector<FaceType>
+		vert: VertContainer,std::vector<VertexType> 
+PopModel: 
+	Model:（对应一副牙）
+		Shell:（对应一颗牙）
+			ShellBase
+			TPMesh:
+				ThisMesh:
+					MeshBase<ThisBaseType>
+Tooth:(闭合曲面，包括虚拟龈下部分)
+	Shell
+		...
+
+ToothCrown：（实际扫描牙冠部分，临床冠, 不封闭）
+	Tooth
+	TPmesh
+	TPHoleList	
+
+四,其它
+	几种树结构:(复杂度依次增加)
+	OCTree:八叉树,适用于体素操作
+	AABBTree, Axis Aligned Bounding Box，轴对齐(X/Y/Z等)包围盒
+	OBBTree,Oriented Bounding Box，有向包围盒；---适于找交点等
+	KDTree---适合于找临近点
+
+	Transverse:横向
+	Sagittal:矢向
+	Vertical:垂直向
+
+	incisor：切牙
+	anterior：前牙(包括门牙和尖牙)
+	Canine：尖牙，犬齿
+	Molar：磨牙，臼齿
+	eruption: 萌出牙
+
+	Interincisal angle: 门牙间角度
+	Intercanine Width: 尖牙间宽
+	Intermolar Width: 磨牙间宽
+	Overbite (anterior)：（前牙）覆合度
+	Overjet：覆盖度
+	ARCH LENGTH（Crowding/spacing）：（拥挤度或间隙宽度）
+	
+	
+	近/远中平移, Translation Mesial/Distal 
+	颊/舌向平移, Translation buccal/Lingual
+	升高（伸）/压低（缩）, Extrusion/Intrusion
+	冠轴倾(近远倾), Crown inclination(Inclination Mesial/Distal)
+	冠转矩(颊舌倾), Crown torque(Inclination Buccal/Lingual)
+	扭转(近远扭转), Rotation(Rotation Mesial/Distal)
